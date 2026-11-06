@@ -1,0 +1,71 @@
+{
+  "name": "3d-mql",
+  "displayName": "3D MQL Graph",
+  "description": "ENOVIA MQL로 객체와 관계를 그래프로 탐색합니다.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.101.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "icon": "media/icon.png",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "3d-mql.openGraph",
+        "title": "3D MQL: 새 관계 그래프 열기"
+      }
+    ],
+    "configuration": {
+      "title": "3D MQL Graph",
+      "properties": {
+        "3d-mql.contextCommand": {
+          "type": "string",
+          "default": "set context user creator;",
+          "description": "MQL 세션 시작 직후 실행할 접속 명령입니다."
+        },
+        "3d-mql.searchLimit": {
+          "type": "number",
+          "default": 200,
+          "description": "객체 검색 결과 최대 건수입니다."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "npm run build:webview && npm run build:extension",
+    "build:extension": "node esbuild.js",
+    "build:webview": "vite build --config webview/vite.config.js",
+    "watch:webview": "vite build --watch --config webview/vite.config.js",
+    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository --skip-license",
+    "vscode:prepublish": "npm run build"
+  },
+  "dependencies": {
+    "@lucide/vue": "^1.69.0",
+    "cytoscape": "^3.34.4",
+    "cytoscape-fcose": "^2.2.0",
+    "lodash-es": "^4.18.1",
+    "vue": "^3.5.45"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.4",
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.101.0",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "@vscode/vsce": "^4.1.0",
+    "@vueuse/core": "^15.0.0",
+    "esbuild": "^0.28.2",
+    "tailwindcss": "^4.3.4",
+    "typescript": "^5.9.2",
+    "unplugin-auto-import": "^21.1.0",
+    "vite": "^8.3.6"
+  }
+}

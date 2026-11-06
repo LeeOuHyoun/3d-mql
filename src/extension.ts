@@ -1,0 +1,19 @@
+import * as vscode from 'vscode';
+import { GraphPanel } from './graphPanel';
+
+export function activate(context: vscode.ExtensionContext) {
+  const status = vscode.window.createStatusBarItem('3d-mql.open', vscode.StatusBarAlignment.Left, 99);
+  status.name = '3D MQL Graph';
+  status.text = '$(type-hierarchy)';
+  status.tooltip = '3D MQL 새 관계 그래프 열기';
+  status.command = '3d-mql.openGraph';
+  status.show();
+  context.subscriptions.push(
+    vscode.commands.registerCommand('3d-mql.openGraph', () => GraphPanel.open(context)),
+    status,
+  );
+}
+
+export function deactivate() {
+  GraphPanel.disposeAll();
+}
