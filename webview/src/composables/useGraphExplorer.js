@@ -1,4 +1,4 @@
-import { onMessage, post, request } from '@/api.js'
+import { getState, onMessage, post, request, setState } from '@/api.js'
 import { useTheme } from './useTheme.js'
 import { useGraphCytoscape } from './useGraphCytoscape.js'
 
@@ -52,20 +52,22 @@ export function useGraphExplorer() {
     isRoot: o.id === rootId.value,
   })
 
-  const doSyncGraph = (shouldLayout = true, animate = true, fit = true, isContextMenuAction = false) =>
+  const doSyncGraph = (shouldLayout = true, animate = true, fit = true, isContextMenuAction = false) => {
     syncGraph(rawNodes, rawEdges, rootId.value, shouldLayout, animate, fit, isContextMenuAction)
+    persist()
+  }
 
   const mergeExpansion = (sourceId, direction, { nodes, edges }) => {
-    const isReverse = direction === 'to'
     Object.keys(rawEdges).forEach((key) => {
       const e = rawEdges[key]
-      if (isReverse ? e.isReverse && e.to === sourceId : !e.isReverse && e.from === sourceId) delete rawEdges[key]
+      const isOwn = e.isReverse ? e.to === sourceId : e.from === sourceId
+      if (isOwn && (direction === 'both' || e.isReverse === (direction === 'to'))) delete rawEdges[key]
     })
     nodes.forEach((n) => {
       rawNodes[n.id] ??= toNode(n)
     })
     edges.forEach((e) => {
-      rawEdges[e.id] ??= { ...e, source: e.from, target: e.to, displayName: e.label, isReverse }
+      rawEdges[e.id] ??= { ...e, source: e.from, target: e.to, displayName: e.label, isReverse: e.to === sourceId }
     })
   }
 
@@ -75,7 +77,7 @@ export function useGraphExplorer() {
     errorMsg.value = ''
     try {
       mergeExpansion(id, direction, await request('expand', { id, direction }))
-      lastExpansionMode.value = direction === 'from' ? 'forward' : 'backward'
+      lastExpansionMode.value = direction === 'to' ? 'backward' : 'forward'
       lastExpandedNodeId.value = id
       doSyncGraph(true, true, true, isContextMenuAction)
     } catch (e) {
@@ -102,11 +104,11 @@ export function useGraphExplorer() {
     errorMsg.value = ''
     try {
       const { summary } = await request('object', { id })
-      const expansion = await request('expand', { id: summary.id, direction: 'from' })
+      const expansion = await request('expand', { id: summary.id, direction: 'both' })
       clearGraph()
       rootId.value = summary.id
       rawNodes[summary.id] = toNode(summary)
-      mergeExpansion(summary.id, 'from', expansion)
+      mergeExpansion(summary.id, 'both', expansion)
       lastExpansionMode.value = 'forward'
       doSyncGraph()
     } catch (e) {
@@ -139,6 +141,7 @@ export function useGraphExplorer() {
       searchResults.value = results
       searchLimit.value = limit
       isSearchPanelOpen.value = true
+      persist()
     } catch (e) {
       errorMsg.value = e.message
     } finally {
@@ -191,7 +194,7 @@ export function useGraphExplorer() {
       doSyncGraph(true, true, false)
       return
     }
-    expand(node.id(), 'from')
+    expand(node.id(), 'both')
   }
 
   const { copy: copyText } = useClipboard({ legacy: true })
@@ -207,7 +210,34 @@ export function useGraphExplorer() {
     else if (action === 'copyId') copyText(id)
   }
 
-  onMounted(() => initCytoscape({ onNodeDblTap, onSelect, onUnselect }))
+  const persist = () =>
+    setState({
+      rawNodes,
+      rawEdges,
+      rootId: rootId.value,
+      searchForm: { ...searchForm },
+      searchResults: searchResults.value,
+      searchLimit: searchLimit.value,
+      isSearchPanelOpen: isSearchPanelOpen.value,
+    })
+
+  const restore = () => {
+    const saved = getState()
+    if (!saved) return
+    rawNodes = saved.rawNodes
+    rawEdges = saved.rawEdges
+    rootId.value = saved.rootId
+    Object.assign(searchForm, saved.searchForm)
+    searchResults.value = saved.searchResults
+    searchLimit.value = saved.searchLimit
+    isSearchPanelOpen.value = saved.isSearchPanelOpen
+    doSyncGraph(true, false)
+  }
+
+  onMounted(() => {
+    initCytoscape({ onNodeDblTap, onSelect, onUnselect })
+    restore()
+  })
   onBeforeUnmount(destroyCy)
 
   return {

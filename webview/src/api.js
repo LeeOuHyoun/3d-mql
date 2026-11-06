@@ -17,6 +17,10 @@ window.addEventListener('message', ({ data }) => {
 
 export const post = (message) => vscode.postMessage(message)
 
+export const getState = () => vscode.getState()
+
+export const setState = (state) => vscode.setState(state)
+
 export const request = (method, params = {}) =>
   new Promise((resolve, reject) => {
     const id = ++seq

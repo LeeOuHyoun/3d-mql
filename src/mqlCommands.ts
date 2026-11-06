@@ -4,7 +4,7 @@ export type ObjectSummary = { id: string; type: string; name: string; revision: 
 export type GraphEdge = { id: string; from: string; to: string; label: string };
 export type Field = { key: string; value: string };
 export type SearchParams = { type?: string; name?: string; revision?: string };
-export type Direction = 'from' | 'to';
+export type Direction = 'from' | 'to' | 'both';
 
 const separator = '|~|';
 const idPattern = /^[\w.]+$/;
@@ -81,6 +81,12 @@ export async function searchObjects(client: MqlClient, params: SearchParams, lim
 }
 
 export async function expandObject(client: MqlClient, id: string, direction: Direction) {
+  if (direction !== 'both') return expandDirection(client, id, direction);
+  const results = await Promise.all([expandDirection(client, id, 'from'), expandDirection(client, id, 'to')]);
+  return { nodes: results.flatMap((item) => item.nodes), edges: results.flatMap((item) => item.edges) };
+}
+
+async function expandDirection(client: MqlClient, id: string, direction: 'from' | 'to') {
   const text = await client.run(
     `expand bus ${checkId(id)} ${direction} relationship "*" select bus type id current select rel type id dump ${quote(separator)}`,
   );
