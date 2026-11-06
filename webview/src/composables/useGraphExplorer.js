@@ -102,11 +102,13 @@ export function useGraphExplorer() {
     errorMsg.value = ''
     try {
       const { summary } = await request('object', { id })
+      const expansion = await request('expand', { id: summary.id, direction: 'from' })
       clearGraph()
       rootId.value = summary.id
       rawNodes[summary.id] = toNode(summary)
+      mergeExpansion(summary.id, 'from', expansion)
+      lastExpansionMode.value = 'forward'
       doSyncGraph()
-      await expand(summary.id, 'from')
     } catch (e) {
       errorMsg.value = e.message
     } finally {

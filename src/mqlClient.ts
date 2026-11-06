@@ -15,10 +15,12 @@ export class MqlClient {
   private startWaiter: Waiter<void> | undefined;
   private starting: Promise<void> | undefined;
   private queue: Promise<unknown> = Promise.resolve();
+  private sent: { command: string; at: number } | undefined;
 
   constructor(
     private readonly contextCommand: () => string,
     private readonly onStatus: (status: ClientStatus, message?: string) => void,
+    private readonly log: (text: string) => void,
   ) {
     this.session = new MqlSession({
       output: (text) => {
@@ -96,6 +98,7 @@ export class MqlClient {
       this.buffer = '';
       this.pending = { resolve, reject };
       const text = command.trim().endsWith(';') ? command.trim() : `${command.trim()};`;
+      this.sent = { command: text, at: Date.now() };
       if (this.session.send(text)) return;
       this.pending = undefined;
       reject(new Error('MQL 명령 전송에 실패했습니다.'));
@@ -108,12 +111,17 @@ export class MqlClient {
     if (!pending) return;
     const text = this.buffer.replace(promptPattern, '');
     this.buffer = '';
+    if (this.sent) {
+      const elapsed = Date.now() - this.sent.at;
+      this.log(`${elapsed}ms prompt=${this.session.prompted} > ${this.sent.command}\n${text.slice(0, 2000)}`);
+    }
     const errors = text.match(errorPattern);
     if (errors) pending.reject(new Error(errors.map((line) => line.trim()).join('\n')));
     else pending.resolve(text);
   }
 
   private abort(status: ClientStatus, message: string) {
+    this.log(`${status}: ${message}`);
     this.starting = undefined;
     this.rejectAll(new Error(message));
     this.onStatus(status, message);

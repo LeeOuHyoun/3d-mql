@@ -8,9 +8,11 @@ export function activate(context: vscode.ExtensionContext) {
   status.tooltip = '3D MQL 새 관계 그래프 열기';
   status.command = '3d-mql.openGraph';
   status.show();
+  const output = vscode.window.createOutputChannel('3D MQL');
   context.subscriptions.push(
-    vscode.commands.registerCommand('3d-mql.openGraph', () => GraphPanel.open(context)),
+    vscode.commands.registerCommand('3d-mql.openGraph', () => GraphPanel.open(context, output)),
     status,
+    output,
   );
 }
 

@@ -11,6 +11,8 @@ cytoscape.warnings(false)
 
 const CLUSTER_THRESHOLD = 10
 const FAST_MODE_THRESHOLD = 30
+const FIT_MAX_ZOOM = 1
+const USER_MAX_ZOOM = 1e50
 
 export function useGraphCytoscape(isDark, lastExpansionMode) {
   const cyRef = shallowRef(null)
@@ -33,7 +35,11 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   const runLayout = (options, onStop) => {
     const start = (opts) => {
       const layout = cyRef.value.layout(opts)
-      if (onStop) layout.one('layoutstop', onStop)
+      cyRef.value.maxZoom(FIT_MAX_ZOOM)
+      layout.one('layoutstop', () => {
+        cyRef.value?.maxZoom(USER_MAX_ZOOM)
+        onStop?.()
+      })
       activeLayout = layout
       layout.run()
     }

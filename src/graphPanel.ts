@@ -18,10 +18,10 @@ export class GraphPanel {
   private readonly disposables: vscode.Disposable[] = [];
   private status: { state: ClientStatus; message?: string } = { state: 'connecting' };
 
-  static open(context: vscode.ExtensionContext) {
+  static open(context: vscode.ExtensionContext, output: vscode.OutputChannel) {
     let slot = 1;
     while (GraphPanel.panels.has(slot)) slot += 1;
-    GraphPanel.panels.set(slot, new GraphPanel(context, slot));
+    GraphPanel.panels.set(slot, new GraphPanel(context, slot, output));
   }
 
   static disposeAll() {
@@ -31,6 +31,7 @@ export class GraphPanel {
   private constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly slot: number,
+    output: vscode.OutputChannel,
   ) {
     const root = vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview');
     const title = slot === 1 ? '3D MQL Graph' : `3D MQL Graph ${slot}`;
@@ -46,6 +47,7 @@ export class GraphPanel {
         this.status = { state, message };
         this.post({ type: 'status', state, message });
       },
+      (text) => output.appendLine(`[${new Date().toISOString()}] [${slot}] ${text}`),
     );
     this.panel.webview.html = this.html(root);
     this.disposables.push(
