@@ -24,12 +24,12 @@ export class MqlClient {
       output: (text) => {
         if (this.pending) this.buffer += text;
       },
-      ready: () => {},
+      ready: () => this.startWaiter?.resolve(),
       released: () => this.settle(),
       failed: () => this.abort('failed', 'mql을 실행할 수 없습니다. PATH에 mql이 있는지 확인하세요.'),
       ended: (text) => this.abort('ended', text || 'MQL 세션이 종료되었습니다.'),
       batch: () => {},
-      prompted: () => this.startWaiter?.resolve(),
+      prompted: () => {},
     });
   }
 
