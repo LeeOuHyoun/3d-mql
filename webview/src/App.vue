@@ -89,7 +89,7 @@ const graphMenuItems = [
       <div class="flex-1 h-full min-w-0 relative">
         <div
           ref="cyContainer"
-          class="absolute inset-0 outline-none select-none overflow-hidden bg-white dark:bg-[#282c34]"
+          class="w-full h-full outline-none select-none overflow-hidden bg-white dark:bg-[#282c34]"
           @mouseleave="hideTooltip"
         ></div>
         <div
