@@ -1,6 +1,7 @@
 <script setup>
 import { X, Copy } from '@lucide/vue'
 import ContextMenu from './ContextMenu.vue'
+import { usePanelResize } from '../composables/usePanelResize.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -11,6 +12,8 @@ const props = defineProps({
 const emit = defineEmits(['select', 'close'])
 
 const isLimited = computed(() => props.limit > 0 && props.results.length >= props.limit)
+
+const { width, onResizeStart } = usePanelResize('search', 288, 'right')
 
 const { copy } = useClipboard({ legacy: true })
 const menu = shallowRef(null)
@@ -35,9 +38,14 @@ const handleMenuAction = (action) => {
 <template>
   <div
     v-if="props.open"
-    class="w-72 h-full border-r border-gray-200 dark:border-[#3e4451] bg-gray-50 dark:bg-[#21252b] flex flex-col shrink-0 overflow-hidden"
+    class="relative h-full border-r border-gray-200 dark:border-[#3e4451] bg-gray-50 dark:bg-[#21252b] flex flex-col shrink-0 overflow-hidden"
+    :style="{ width: `${width}px` }"
     @contextmenu.prevent
   >
+    <div
+      class="absolute top-0 right-0 bottom-0 w-1 z-10 cursor-col-resize hover:bg-[#61afef]/40"
+      @pointerdown.prevent="onResizeStart"
+    ></div>
     <div
       class="px-4 py-3 border-b border-gray-200 dark:border-[#3e4451] flex items-center justify-between shrink-0 bg-white dark:bg-[#282c34]"
     >

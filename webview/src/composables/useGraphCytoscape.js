@@ -1,5 +1,7 @@
 import cytoscape from 'cytoscape'
 import fcose from 'cytoscape-fcose'
+import navigator from 'cytoscape-navigator'
+import 'cytoscape-navigator/cytoscape.js-navigator.css'
 import { debounce, uniqBy, partition } from 'lodash-es'
 import { getCytoscapeStyle } from '@/graph/graphStyles.js'
 import { getLayoutOptions } from '@/graph/graphLayouts.js'
@@ -7,6 +9,7 @@ import { processRadialElems } from '@/graph/graphDataProcessor.js'
 import { useGraphEvents } from './useGraphEvents.js'
 
 cytoscape.use(fcose)
+navigator(cytoscape)
 cytoscape.warnings(false)
 
 const CLUSTER_THRESHOLD = 10
@@ -131,6 +134,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       lastExpansionMode: lastExpansionMode.value,
     })
     updateElements(elems)
+    applyFilter()
     hasElements.value = cyRef.value.elements().length > 0
     if (!shouldLayout) return
     Promise.resolve().then(() => {
@@ -149,6 +153,56 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       else if (zoom < 0.5) cyRef.value.elements().addClass('lod-mid')
     })
   }, 100)
+
+  const graphFilter = ref('')
+
+  const applyFilter = () => {
+    if (!cyRef.value) return
+    const query = graphFilter.value.toLowerCase().trim()
+    cyRef.value.batch(() => {
+      const all = cyRef.value.elements()
+      all.removeClass('search-match search-neighbor search-dimmed')
+      if (!query) return
+      const matchedNodes = cyRef.value
+        .nodes()
+        .filter((n) => (n.data('label') || '').toLowerCase().includes(query) || n.id().toLowerCase().includes(query))
+      const matchedEdges = cyRef.value.edges().filter((e) => (e.data('label') || '').toLowerCase().includes(query))
+      const core = matchedNodes
+        .union(matchedNodes.connectedEdges())
+        .union(matchedEdges)
+        .union(matchedEdges.connectedNodes())
+      const neighbors = matchedNodes.neighborhood().union(matchedEdges.connectedNodes().neighborhood())
+      all.addClass('search-dimmed')
+      core.removeClass('search-dimmed').addClass('search-match')
+      neighbors.not(core).removeClass('search-dimmed').addClass('search-neighbor')
+    })
+  }
+
+  watch(graphFilter, applyFilter)
+
+  const navContainer = ref(null)
+  let navInstance = null
+
+  const initNav = () => {
+    if (!cyRef.value || !navContainer.value) return
+    navContainer.value.id = `cy-nav-${Date.now()}`
+    navInstance = cyRef.value.navigator({
+      container: `#${navContainer.value.id}`,
+      viewLiveFramerate: 0,
+      thumbnailEventFramerate: 30,
+      thumbnailLiveFramerate: false,
+      dblClickDelay: 200,
+      removeCustomContainer: false,
+      rerenderDelay: 50,
+    })
+  }
+
+  const resizeNav = () => {
+    if (!navInstance || !cyRef.value) return
+    navInstance.resize()
+    cyRef.value.emit('viewport')
+    cyRef.value.notify({ type: 'render' })
+  }
 
   const initCytoscape = (handlers) => {
     if (!cyContainer.value) return
@@ -170,7 +224,9 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     }
     cyContainer.value.addEventListener('wheel', wheelHandler, { passive: false })
     cyRef.value.on('zoom', applyLoD)
+    cyRef.value.on('layoutstop', resizeNav)
     bindGraphEvents(cyRef.value, cyContainer, handlers)
+    initNav()
   }
 
   const resetView = () => applyLayout(true)
@@ -183,13 +239,18 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       cyContainer.value.removeEventListener('wheel', wheelHandler)
       wheelHandler = null
     }
+    navInstance?.destroy()
+    navInstance = null
     cyRef.value?.destroy()
     cyRef.value = null
   }
 
   useResizeObserver(
     cyContainer,
-    debounce(() => cyRef.value?.resize(), 150),
+    debounce(() => {
+      cyRef.value?.resize()
+      resizeNav()
+    }, 150),
   )
   watch(isDark, () => cyRef.value?.style(getCytoscapeStyle(isDark.value)))
 
@@ -210,6 +271,8 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   return {
     cyRef,
     cyContainer,
+    navContainer,
+    graphFilter,
     hasElements,
     lastExpandedNodeId,
     tooltip,

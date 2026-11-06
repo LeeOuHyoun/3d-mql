@@ -1,5 +1,5 @@
 <script setup>
-import { Search, Loader2, RefreshCw, Eraser, PanelLeft, PanelRight, Sun, Moon, PlugZap } from '@lucide/vue'
+import { Search, Loader2, RefreshCw, Eraser, PanelLeft, PanelRight, Sun, Moon, PlugZap, Filter, X, Map as MapIcon } from '@lucide/vue'
 
 const props = defineProps({
   form: { type: Object, required: true },
@@ -10,6 +10,8 @@ const props = defineProps({
 })
 const isSearchPanelOpen = defineModel('isSearchPanelOpen', { type: Boolean, default: false })
 const isDetailPanelOpen = defineModel('isDetailPanelOpen', { type: Boolean, default: true })
+const isMinimapOpen = defineModel('isMinimapOpen', { type: Boolean, default: true })
+const graphFilter = defineModel('graphFilter', { type: String, default: '' })
 const emit = defineEmits(['search', 'resetView', 'clear', 'toggleTheme', 'reconnect'])
 
 const statusMap = {
@@ -63,6 +65,17 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
       </button>
     </form>
     <Loader2 v-if="props.isLoading" :size="16" class="animate-spin text-[#e5c07b]" />
+    <div class="relative flex items-center">
+      <Filter :size="12" class="absolute left-2 text-gray-400 pointer-events-none" />
+      <input v-model="graphFilter" placeholder="그래프 필터" :class="[inputClass, 'w-44 pl-6 pr-6']" spellcheck="false" />
+      <button
+        v-if="graphFilter"
+        class="absolute right-1 p-0.5 flex items-center border-none bg-transparent text-gray-400 hover:text-gray-600 cursor-pointer"
+        @click="graphFilter = ''"
+      >
+        <X :size="12" />
+      </button>
+    </div>
     <div class="flex-1"></div>
     <div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-[#abb2bf]" :title="props.connection.message">
       <span class="w-2 h-2 rounded-full" :class="status.dot"></span>
@@ -76,6 +89,13 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
     </button>
     <button :class="iconBtnClass" title="그래프 지우기" @click="emit('clear')">
       <Eraser :size="16" />
+    </button>
+    <button
+      :class="[iconBtnClass, isMinimapOpen && activeClass]"
+      title="미니맵"
+      @click="isMinimapOpen = !isMinimapOpen"
+    >
+      <MapIcon :size="16" />
     </button>
     <button :class="iconBtnClass" :title="props.isDark ? '라이트 모드' : '다크 모드'" @click="emit('toggleTheme')">
       <Sun v-if="props.isDark" :size="16" />

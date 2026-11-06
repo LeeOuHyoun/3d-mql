@@ -10,6 +10,8 @@ export function useGraphExplorer() {
   const {
     cyRef,
     cyContainer,
+    navContainer,
+    graphFilter,
     hasElements,
     lastExpandedNodeId,
     tooltip,
@@ -92,6 +94,7 @@ export function useGraphExplorer() {
     rawNodes = {}
     rawEdges = {}
     rootId.value = ''
+    graphFilter.value = ''
     lastExpandedNodeId.value = null
     resetClusters()
     selectedItem.value = null
@@ -244,6 +247,8 @@ export function useGraphExplorer() {
     isDark,
     toggleTheme,
     cyContainer,
+    navContainer,
+    graphFilter,
     hasElements,
     tooltip,
     contextMenu,

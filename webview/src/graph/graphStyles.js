@@ -124,6 +124,27 @@ export const getCytoscapeStyle = (isDarkVal) => [
     },
   },
   {
+    selector: 'node.search-match, edge.search-match',
+    style: {
+      opacity: 1,
+      'z-index': 999,
+    },
+  },
+  {
+    selector: 'node.search-neighbor, edge.search-neighbor',
+    style: {
+      opacity: 0.6,
+      'z-index': 998,
+    },
+  },
+  {
+    selector: 'node.search-dimmed, edge.search-dimmed',
+    style: {
+      opacity: 0.1,
+      'z-index': 1,
+    },
+  },
+  {
     selector: 'node.lod-far',
     style: {
       'font-size': '0px',

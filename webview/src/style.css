@@ -18,3 +18,45 @@ body {
 .dark body {
   background: #282c34;
 }
+
+.cytoscape-navigator {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  border: none !important;
+  background: transparent !important;
+  z-index: auto !important;
+  bottom: auto !important;
+  right: auto !important;
+}
+
+.cytoscape-navigator img {
+  min-width: 100%;
+  min-height: 100%;
+  color: transparent;
+}
+
+.cytoscape-navigator > canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+.cytoscape-navigatorView {
+  position: absolute;
+  top: 0;
+  left: 0;
+  cursor: move;
+  background: rgba(79, 70, 229, 0.15);
+  border: 1.5px solid rgba(79, 70, 229, 0.5);
+  border-radius: 2px;
+  opacity: 1;
+  z-index: 2;
+}
+
+.cytoscape-navigatorOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+}

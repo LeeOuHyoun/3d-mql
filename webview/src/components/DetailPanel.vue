@@ -1,5 +1,6 @@
 <script setup>
 import { X, Copy, Check, Loader2, Network, CornerRightUp } from '@lucide/vue'
+import { usePanelResize } from '../composables/usePanelResize.js'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -36,6 +37,8 @@ const sections = computed(() =>
   ].map((section) => ({ ...section, fields: section.fields.filter(matches) })),
 )
 
+const { width, onResizeStart } = usePanelResize('detail', 320, 'left')
+
 const actionBtnClass =
   'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-semibold rounded-md border transition-all active:scale-[0.98] cursor-pointer'
 </script>
@@ -43,8 +46,13 @@ const actionBtnClass =
 <template>
   <div
     v-if="props.open"
-    class="w-80 h-full border-l border-gray-200 dark:border-[#3e4451] bg-gray-50 dark:bg-[#21252b] flex flex-col shrink-0 overflow-hidden"
+    class="relative h-full border-l border-gray-200 dark:border-[#3e4451] bg-gray-50 dark:bg-[#21252b] flex flex-col shrink-0 overflow-hidden"
+    :style="{ width: `${width}px` }"
   >
+    <div
+      class="absolute top-0 left-0 bottom-0 w-1 z-10 cursor-col-resize hover:bg-[#61afef]/40"
+      @pointerdown.prevent="onResizeStart"
+    ></div>
     <div
       class="px-4 py-3 border-b border-gray-200 dark:border-[#3e4451] flex items-center justify-between shrink-0 bg-white dark:bg-[#282c34]"
     >

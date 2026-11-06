@@ -11,6 +11,8 @@ const {
   isDark,
   toggleTheme,
   cyContainer,
+  navContainer,
+  graphFilter,
   hasElements,
   tooltip,
   contextMenu,
@@ -40,6 +42,8 @@ const {
 
 const handlePanelExpand = (id, direction) => expand(id, direction, true)
 
+const isMinimapOpen = ref(true)
+
 const graphMenuItems = [
   { action: 'expand', label: 'Expand (From)', icon: Network, color: 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/40' },
   { action: 'whereUsed', label: 'Where Used (To)', icon: CornerRightUp, color: 'text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/40' },
@@ -53,6 +57,8 @@ const graphMenuItems = [
     <GraphToolbar
       v-model:isSearchPanelOpen="isSearchPanelOpen"
       v-model:isDetailPanelOpen="isDetailPanelOpen"
+      v-model:isMinimapOpen="isMinimapOpen"
+      v-model:graphFilter="graphFilter"
       :form="searchForm"
       :isSearching="isSearching"
       :isLoading="isLoading"
@@ -92,6 +98,13 @@ const graphMenuItems = [
           class="w-full h-full outline-none select-none overflow-hidden bg-white dark:bg-[#282c34]"
           @mouseleave="hideTooltip"
         ></div>
+        <div
+          class="absolute bottom-2 right-2 z-10 w-60 h-44 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90"
+          :class="!(isMinimapOpen && hasElements) && 'invisible'"
+          @mouseenter="hideTooltip"
+        >
+          <div ref="navContainer" class="w-full h-full relative overflow-hidden"></div>
+        </div>
         <div
           v-if="!hasElements"
           class="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none text-gray-400 dark:text-[#5c6370] text-xs"
