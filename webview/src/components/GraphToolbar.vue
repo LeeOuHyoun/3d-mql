@@ -67,7 +67,7 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
     <Loader2 v-if="props.isLoading" :size="16" class="animate-spin text-[#e5c07b]" />
     <div class="relative flex items-center">
       <Filter :size="12" class="absolute left-2 text-gray-400 pointer-events-none" />
-      <input v-model="graphFilter" placeholder="그래프 필터" :class="[inputClass, 'w-44 pl-6 pr-6']" spellcheck="false" />
+      <input v-model="graphFilter" placeholder="그래프 필터" :class="[inputClass, 'w-132 pl-6 pr-6']" spellcheck="false" />
       <button
         v-if="graphFilter"
         class="absolute right-1 p-0.5 flex items-center border-none bg-transparent text-gray-400 hover:text-gray-600 cursor-pointer"

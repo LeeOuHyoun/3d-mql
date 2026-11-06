@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "acceptEdits",
     "allow": [
       "Bash(npx tsc --noEmit -p .)",
       "Bash(npm run build)",

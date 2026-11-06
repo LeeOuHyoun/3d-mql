@@ -42,7 +42,7 @@ const {
 
 const handlePanelExpand = (id, direction) => expand(id, direction, true)
 
-const isMinimapOpen = ref(true)
+const isMinimapOpen = useStorage('3d-mql-minimap-open', true)
 
 const graphMenuItems = [
   { action: 'expand', label: 'Expand (From)', icon: Network, color: 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/40' },

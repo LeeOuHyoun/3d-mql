@@ -5,7 +5,11 @@ export type ClientStatus = 'connecting' | 'ready' | 'failed' | 'ended';
 type Waiter<T> = { resolve: (value: T) => void; reject: (error: Error) => void };
 
 const startTimeoutMs = 30000;
+const responseTimeoutMs = 60000;
+const markerGraceMs = 30;
+const markerCommand = 'print context;';
 const promptPattern = /MQL<\d*>\s*$/;
+const promptsPattern = /MQL<\d*>/g;
 const errorPattern = /^\s*(?:System )?Error:.*$/gm;
 
 export class MqlClient {
@@ -16,6 +20,8 @@ export class MqlClient {
   private starting: Promise<void> | undefined;
   private queue: Promise<unknown> = Promise.resolve();
   private sent: { command: string; at: number } | undefined;
+  private marker: string | undefined;
+  private responseTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private readonly contextCommand: () => string,
@@ -24,7 +30,11 @@ export class MqlClient {
   ) {
     this.session = new MqlSession({
       output: (text) => {
-        if (this.pending) this.buffer += text;
+        if (!this.pending) return;
+        this.buffer += text;
+        if (!this.marker || !this.stripPrompts().endsWith(this.marker)) return;
+        clearTimeout(this.responseTimer);
+        this.responseTimer = setTimeout(() => this.settle(), markerGraceMs);
       },
       ready: () => this.startWaiter?.resolve(),
       released: () => this.settle(),
@@ -68,6 +78,7 @@ export class MqlClient {
   }
 
   private async boot() {
+    this.marker = undefined;
     this.onStatus('connecting');
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('MQL 세션 시작 시간이 초과되었습니다.')), startTimeoutMs);
@@ -86,12 +97,14 @@ export class MqlClient {
     this.startWaiter = undefined;
     const command = this.contextCommand().trim();
     if (command) await this.exec(command);
+    this.marker = (await this.exec(markerCommand)).replace(promptsPattern, '').trim() || undefined;
+    this.log(`marker=${JSON.stringify(this.marker)}`);
     this.onStatus('ready');
   }
 
   private exec(command: string): Promise<string> {
     return new Promise((resolve, reject) => {
-      if (!this.session.arm()) {
+      if (!(this.marker ? this.session.canSend() : this.session.arm())) {
         reject(new Error('MQL 세션에 명령을 보낼 수 없습니다.'));
         return;
       }
@@ -99,17 +112,30 @@ export class MqlClient {
       this.pending = { resolve, reject };
       const text = command.trim().endsWith(';') ? command.trim() : `${command.trim()};`;
       this.sent = { command: text, at: Date.now() };
-      if (this.session.send(text)) return;
+      if (this.session.send(this.marker ? `${text}\n${markerCommand}` : text)) {
+        if (this.marker) this.responseTimer = setTimeout(() => this.settle(), responseTimeoutMs);
+        return;
+      }
       this.pending = undefined;
       reject(new Error('MQL 명령 전송에 실패했습니다.'));
     });
   }
 
+  private stripPrompts() {
+    return this.buffer.replace(promptsPattern, '').trimEnd();
+  }
+
   private settle() {
+    clearTimeout(this.responseTimer);
     const pending = this.pending;
     this.pending = undefined;
     if (!pending) return;
-    const text = this.buffer.replace(promptPattern, '');
+    const stripped = this.stripPrompts();
+    const index = this.marker ? stripped.lastIndexOf(this.marker) : -1;
+    const text =
+      this.marker && index >= 0
+        ? stripped.slice(0, index) + stripped.slice(index + this.marker.length)
+        : this.buffer.replace(promptPattern, '');
     this.buffer = '';
     if (this.sent) {
       const elapsed = Date.now() - this.sent.at;
