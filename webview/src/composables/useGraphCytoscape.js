@@ -1,5 +1,6 @@
 import cytoscape from 'cytoscape'
 import fcose from 'cytoscape-fcose'
+import dagre from 'cytoscape-dagre'
 import navigator from 'cytoscape-navigator'
 import 'cytoscape-navigator/cytoscape.js-navigator.css'
 import { debounce, uniqBy, partition } from 'lodash-es'
@@ -9,6 +10,7 @@ import { processRadialElems } from '@/graph/graphDataProcessor.js'
 import { useGraphEvents } from './useGraphEvents.js'
 
 cytoscape.use(fcose)
+cytoscape.use(dagre)
 navigator(cytoscape)
 cytoscape.warnings(false)
 
@@ -21,6 +23,8 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   const cyRef = shallowRef(null)
   const cyContainer = ref(null)
   const expandedClusters = reactive(new Set())
+  const pinnedNodes = reactive(new Set())
+  const layoutType = useStorage('3d-mql-layout', 'radial')
   const lastExpandedNodeId = ref(null)
   const hasElements = ref(false)
   let activeLayout = null
@@ -61,12 +65,15 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       const targetNode = cyRef.value?.getElementById(centerNodeId)
       if (targetNode?.length > 0) cyRef.value.animate({ center: { eles: targetNode }, duration: 350, easing: 'ease-out' })
     }
-    runLayout(getLayoutOptions(fastMode, animate && !fastMode, centerNodeId ? false : fit), centerNodeId && centerOnNode)
+    runLayout(
+      getLayoutOptions(fastMode, animate && !fastMode, centerNodeId ? false : fit, layoutType.value),
+      centerNodeId && centerOnNode,
+    )
   }
 
   const animateLayout = (fit) => {
     const oldPositions = getPositions()
-    runLayout(getLayoutOptions(isFastMode(), false, fit), () => {
+    runLayout(getLayoutOptions(isFastMode(), false, fit, layoutType.value), () => {
       const newPositions = getPositions()
       cyRef.value.batch(() => {
         cyRef.value.nodes().forEach((node) => {
@@ -125,10 +132,12 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   const syncGraph = (rawNodes, rawEdges, rootId, shouldLayout = true, animate = true, fit = true, isContextMenuAction = false) => {
     if (!cyRef.value) return
     stopLayout()
+    clearPath()
     const positions = getPositions()
     const seedPos = (lastExpandedNodeId.value && positions[lastExpandedNodeId.value]) || { x: 0, y: 0 }
     const elems = processRadialElems(rawNodes, rawEdges, rootId, positions, seedPos, {
       expandedClusters,
+      pinnedNodes,
       CLUSTER_THRESHOLD,
       lastExpandedNodeId: lastExpandedNodeId.value,
       lastExpansionMode: lastExpansionMode.value,
@@ -225,11 +234,42 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     cyContainer.value.addEventListener('wheel', wheelHandler, { passive: false })
     cyRef.value.on('zoom', applyLoD)
     cyRef.value.on('layoutstop', resizeNav)
+    cyRef.value.on('tap', (evt) => evt.target === cyRef.value && clearPath())
     bindGraphEvents(cyRef.value, cyContainer, handlers)
     initNav()
   }
 
   const resetView = () => applyLayout(true)
+
+  watch(layoutType, resetView)
+
+  const fitView = () => {
+    if (!cyRef.value) return
+    cyRef.value.maxZoom(FIT_MAX_ZOOM)
+    cyRef.value.animate({
+      fit: { eles: cyRef.value.elements(':visible'), padding: 50 },
+      duration: 300,
+      complete: () => cyRef.value?.maxZoom(USER_MAX_ZOOM),
+    })
+  }
+
+  const clearPath = () => cyRef.value?.elements().removeClass('path-match path-dimmed')
+
+  const findPath = (sourceId, targetId) => {
+    if (!cyRef.value) return false
+    clearPath()
+    const { found, path } = cyRef.value.elements(':visible').aStar({
+      root: cyRef.value.getElementById(sourceId),
+      goal: cyRef.value.getElementById(targetId),
+    })
+    if (!found) return false
+    cyRef.value.batch(() => {
+      cyRef.value.elements().addClass('path-dimmed')
+      path.removeClass('path-dimmed').addClass('path-match')
+    })
+    cyRef.value.animate({ fit: { eles: path, padding: 80 }, duration: 350 })
+    return true
+  }
 
   const destroyCy = () => {
     hideTooltip()
@@ -257,7 +297,12 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   const toggleCluster = (clusterKey) =>
     expandedClusters.has(clusterKey) ? expandedClusters.delete(clusterKey) : expandedClusters.add(clusterKey)
 
-  const resetClusters = () => expandedClusters.clear()
+  const resetClusters = () => {
+    expandedClusters.clear()
+    pinnedNodes.clear()
+  }
+
+  const pinNode = (id) => pinnedNodes.add(id)
 
   const collapseExpandedFromNode = (node) => {
     const keys = node
@@ -280,9 +325,13 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     syncGraph,
     initCytoscape,
     resetView,
+    fitView,
+    findPath,
+    layoutType,
     destroyCy,
     toggleCluster,
     resetClusters,
+    pinNode,
     collapseExpandedFromNode,
     hideTooltip,
     hideContextMenu,

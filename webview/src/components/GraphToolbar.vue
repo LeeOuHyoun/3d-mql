@@ -1,5 +1,29 @@
 <script setup>
-import { Search, Loader2, RefreshCw, Eraser, PanelLeft, PanelRight, Sun, Moon, PlugZap, Filter, X, Map as MapIcon } from '@lucide/vue'
+import {
+  Search,
+  Loader2,
+  RefreshCw,
+  Eraser,
+  PanelLeft,
+  PanelRight,
+  Sun,
+  Moon,
+  PlugZap,
+  Filter,
+  X,
+  Map as MapIcon,
+  ListFilter,
+  ArrowLeft,
+  ArrowRight,
+  Clock,
+  Check,
+  Orbit,
+  MoveDown,
+  MoveRight,
+  Scan,
+  Terminal,
+} from '@lucide/vue'
+import ContextMenu from './ContextMenu.vue'
 
 const props = defineProps({
   form: { type: Object, required: true },
@@ -7,12 +31,48 @@ const props = defineProps({
   isLoading: { type: Boolean, default: false },
   isDark: { type: Boolean, default: false },
   connection: { type: Object, required: true },
+  history: { type: Array, default: () => [] },
+  historyIndex: { type: Number, default: -1 },
 })
 const isSearchPanelOpen = defineModel('isSearchPanelOpen', { type: Boolean, default: false })
+const isRelationPanelOpen = defineModel('isRelationPanelOpen', { type: Boolean, default: false })
 const isDetailPanelOpen = defineModel('isDetailPanelOpen', { type: Boolean, default: true })
 const isMinimapOpen = defineModel('isMinimapOpen', { type: Boolean, default: true })
+const isConsoleOpen = defineModel('isConsoleOpen', { type: Boolean, default: false })
 const graphFilter = defineModel('graphFilter', { type: String, default: '' })
-const emit = defineEmits(['search', 'resetView', 'clear', 'toggleTheme', 'reconnect'])
+const layoutType = defineModel('layoutType', { type: String, default: 'radial' })
+const emit = defineEmits(['search', 'resetView', 'fit', 'clear', 'toggleTheme', 'reconnect', 'back', 'forward', 'go'])
+
+const layouts = [
+  { value: 'radial', title: 'Radial 레이아웃', icon: Orbit },
+  { value: 'flow-tb', title: 'Flowchart (세로)', icon: MoveDown },
+  { value: 'flow-lr', title: 'Flowchart (가로)', icon: MoveRight },
+]
+
+const historyMenu = shallowRef(null)
+const historyItems = computed(() =>
+  props.history
+    .map((entry, index) => ({
+      action: String(index),
+      label: entry.label,
+      icon: index === props.historyIndex ? Check : Clock,
+      color:
+        index === props.historyIndex
+          ? 'text-[#4b8bca] dark:text-[#61afef] hover:bg-[#61afef]/10'
+          : 'text-gray-700 dark:text-[#abb2bf] hover:bg-gray-100 dark:hover:bg-white/10',
+    }))
+    .reverse(),
+)
+
+const openHistoryMenu = (e) => {
+  const rect = e.currentTarget.getBoundingClientRect()
+  historyMenu.value = { x: rect.left, y: rect.bottom + 4 }
+}
+
+const handleHistoryAction = (action) => {
+  historyMenu.value = null
+  emit('go', Number(action))
+}
 
 const statusMap = {
   connecting: { label: '연결 중', dot: 'bg-amber-400 animate-pulse' },
@@ -45,6 +105,39 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
     >
       <PanelLeft :size="16" />
     </button>
+    <button
+      :class="[iconBtnClass, isRelationPanelOpen && activeClass]"
+      title="관계 필터 · 범례"
+      @click="isRelationPanelOpen = !isRelationPanelOpen"
+    >
+      <ListFilter :size="16" />
+    </button>
+    <div class="flex items-center">
+      <button
+        :class="[iconBtnClass, 'disabled:opacity-30 disabled:cursor-default']"
+        :disabled="props.historyIndex <= 0"
+        title="이전 기준 객체"
+        @click="emit('back')"
+      >
+        <ArrowLeft :size="16" />
+      </button>
+      <button
+        :class="[iconBtnClass, 'disabled:opacity-30 disabled:cursor-default']"
+        :disabled="!props.history.length"
+        title="기준 객체 기록"
+        @click="openHistoryMenu"
+      >
+        <Clock :size="16" />
+      </button>
+      <button
+        :class="[iconBtnClass, 'disabled:opacity-30 disabled:cursor-default']"
+        :disabled="props.historyIndex >= props.history.length - 1"
+        title="다음 기준 객체"
+        @click="emit('forward')"
+      >
+        <ArrowRight :size="16" />
+      </button>
+    </div>
     <form class="flex items-center gap-1.5" @submit.prevent="emit('search')">
       <input
         v-for="field in fields"
@@ -84,18 +177,39 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
     <button :class="iconBtnClass" title="MQL 재연결" @click="emit('reconnect')">
       <PlugZap :size="16" />
     </button>
+    <div class="flex items-center rounded-md bg-gray-100 dark:bg-white/5">
+      <button
+        v-for="layout in layouts"
+        :key="layout.value"
+        :class="[iconBtnClass, layoutType === layout.value && activeClass]"
+        :title="layout.title"
+        @click="layoutType = layout.value"
+      >
+        <component :is="layout.icon" :size="16" />
+      </button>
+    </div>
     <button :class="iconBtnClass" title="레이아웃 다시 정렬" @click="emit('resetView')">
       <RefreshCw :size="16" />
     </button>
-    <button :class="iconBtnClass" title="그래프 지우기" @click="emit('clear')">
+    <button :class="iconBtnClass" title="화면 맞춤" @click="emit('fit')">
+      <Scan :size="16" />
+    </button>
+    <button :class="iconBtnClass" title="그래프 지우기 (Ctrl+L)" @click="emit('clear')">
       <Eraser :size="16" />
     </button>
     <button
       :class="[iconBtnClass, isMinimapOpen && activeClass]"
-      title="미니맵"
+      title="미니맵 (Alt+M)"
       @click="isMinimapOpen = !isMinimapOpen"
     >
       <MapIcon :size="16" />
+    </button>
+    <button
+      :class="[iconBtnClass, isConsoleOpen && activeClass]"
+      title="MQL 콘솔"
+      @click="isConsoleOpen = !isConsoleOpen"
+    >
+      <Terminal :size="16" />
     </button>
     <button :class="iconBtnClass" :title="props.isDark ? '라이트 모드' : '다크 모드'" @click="emit('toggleTheme')">
       <Sun v-if="props.isDark" :size="16" />
@@ -108,5 +222,12 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
     >
       <PanelRight :size="16" />
     </button>
+    <ContextMenu
+      v-if="historyMenu"
+      :menu="historyMenu"
+      :items="historyItems"
+      @action="handleHistoryAction"
+      @close="historyMenu = null"
+    />
   </div>
 </template>

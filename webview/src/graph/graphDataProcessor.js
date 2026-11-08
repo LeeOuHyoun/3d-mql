@@ -29,7 +29,7 @@ const lastExpandedFlags = (id, { lastExpandedNodeId, lastExpansionMode }) => ({
 })
 
 export const processRadialElems = (rawNodes, rawEdges, rootId, positions, seedPos, options) => {
-  const { expandedClusters, CLUSTER_THRESHOLD } = options
+  const { expandedClusters, pinnedNodes, CLUSTER_THRESHOLD } = options
   const elems = []
   const nodeIds = new Set()
   const edges = Object.values(rawEdges)
@@ -45,8 +45,10 @@ export const processRadialElems = (rawNodes, rawEdges, rootId, positions, seedPo
     totalCount[e.from] = (totalCount[e.from] || 0) + 1
   })
 
-  const addCluster = (key, group, isReverse) => {
-    if (group.length < CLUSTER_THRESHOLD || expandedClusters.has(key)) return
+  const addCluster = (key, allEdges, isReverse) => {
+    if (allEdges.length < CLUSTER_THRESHOLD || expandedClusters.has(key)) return
+    const group = allEdges.filter((e) => !pinnedNodes.has(isReverse ? e.from : e.to))
+    if (!group.length) return
     const first = group[0]
     const anchorId = isReverse ? first.to : first.from
     if (!rawNodes[anchorId]) return

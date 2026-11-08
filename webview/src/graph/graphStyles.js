@@ -23,6 +23,13 @@ export const getCytoscapeStyle = (isDarkVal) => [
     },
   },
   {
+    selector: 'node[color]',
+    style: {
+      'background-color': 'data(color)',
+      'border-color': 'data(color)',
+    },
+  },
+  {
     selector: 'node[?isExploring]',
     style: {
       'border-width': 4,
@@ -142,6 +149,39 @@ export const getCytoscapeStyle = (isDarkVal) => [
     style: {
       opacity: 0.1,
       'z-index': 1,
+    },
+  },
+  {
+    selector: 'node.hover-dimmed, edge.hover-dimmed, node.path-dimmed, edge.path-dimmed',
+    style: {
+      opacity: 0.1,
+    },
+  },
+  {
+    selector: 'node.hover-match, edge.hover-match',
+    style: {
+      opacity: 1,
+      'z-index': 999,
+    },
+  },
+  {
+    selector: 'node.path-match',
+    style: {
+      opacity: 1,
+      'border-width': 4,
+      'border-color': '#c678dd',
+      'border-style': 'solid',
+      'z-index': 999,
+    },
+  },
+  {
+    selector: 'edge.path-match',
+    style: {
+      opacity: 1,
+      width: 4,
+      'line-color': '#c678dd',
+      'target-arrow-color': '#c678dd',
+      'z-index': 999,
     },
   },
   {

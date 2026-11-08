@@ -1,11 +1,31 @@
 <script setup>
-import { X, Waypoints, Network, CornerRightUp, Crosshair, Copy } from '@lucide/vue'
+import {
+  X,
+  Waypoints,
+  Network,
+  CornerRightUp,
+  Crosshair,
+  Copy,
+  Terminal,
+  Play,
+  TextCursorInput,
+  SlidersHorizontal,
+  Link2,
+  GitCompareArrows,
+  Route,
+} from '@lucide/vue'
+import { onMessage } from './api.js'
 import { useGraphExplorer } from './composables/useGraphExplorer.js'
+import { useMqlConsole } from './composables/useMqlConsole.js'
 import GraphToolbar from './components/GraphToolbar.vue'
 import SearchPanel from './components/SearchPanel.vue'
+import RelationPanel from './components/RelationPanel.vue'
 import DetailPanel from './components/DetailPanel.vue'
 import GraphTooltip from './components/GraphTooltip.vue'
 import ContextMenu from './components/ContextMenu.vue'
+import MqlConsole from './components/MqlConsole.vue'
+import ExpandDialog from './components/ExpandDialog.vue'
+import CompareDialog from './components/CompareDialog.vue'
 
 const {
   isDark,
@@ -32,43 +52,129 @@ const {
   expand,
   clearGraph,
   resetView,
+  fitView,
+  layoutType,
   selectedItem,
   detail,
   isDetailLoading,
   isDetailPanelOpen,
   onContextAction,
   rootId,
+  relationFilterState,
+  rootHistory,
+  historyIndex,
+  goHistory,
+  goBack,
+  goForward,
+  expandDialogId,
+  submitExpandOptions,
+  compareItems,
+  pinClusterMember,
+  expandCluster,
 } = useGraphExplorer()
 
 const handlePanelExpand = (id, direction) => expand(id, direction, true)
 
 const isMinimapOpen = useStorage('3d-mql-minimap-open', true)
+const isRelationPanelOpen = useStorage('3d-mql-relation-panel-open', false)
+const { isOpen: isConsoleOpen } = useMqlConsole()
 
-const graphMenuItems = [
-  { action: 'expand', label: 'Expand (From)', icon: Network, color: 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/40' },
-  { action: 'whereUsed', label: 'Where Used (To)', icon: CornerRightUp, color: 'text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/40' },
-  { action: 'setRoot', label: '기준 객체로 보기', icon: Crosshair, color: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/40' },
-  { action: 'copyId', label: 'Copy ID', icon: Copy, color: 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/40' },
+const shortcuts = {
+  clear: clearGraph,
+  fit: fitView,
+  relationPanel: useToggle(isRelationPanelOpen),
+  detailPanel: useToggle(isDetailPanelOpen),
+  minimap: useToggle(isMinimapOpen),
+  console: useToggle(isConsoleOpen),
+  back: goBack,
+  forward: goForward,
+}
+
+tryOnScopeDispose(onMessage((message) => message?.type === 'shortcut' && shortcuts[message.name]?.()))
+
+const copyColor = 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/40'
+const violetColor = 'text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/40'
+const queryExtras = (action) => [
+  { action: `run:${action}`, icon: Play, title: '콘솔에서 실행' },
+  { action: `insert:${action}`, icon: TextCursorInput, title: '에디터에 삽입' },
 ]
+const copyItem = (action, label) => ({ action: `copy:${action}`, label, icon: Copy, color: copyColor })
+const queryItem = (action, label) => ({ ...copyItem(action, label), icon: Terminal, extras: queryExtras(action) })
+const copyGroup = (label, children) => ({ action: 'copy', label, icon: Copy, color: copyColor, children })
+const linkExistingItem = (label) => ({ action: 'linkExisting', label, icon: Link2, color: violetColor })
+const busQueryItems = [
+  queryItem('printBus', 'print bus'),
+  queryItem('expandFrom', 'expand bus (from)'),
+  queryItem('expandTo', 'expand bus (to)'),
+]
+
+const graphMenuItems = {
+  node: [
+    { action: 'expand', label: 'Expand (From)', icon: Network, color: 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/40' },
+    { action: 'whereUsed', label: 'Where Used (To)', icon: CornerRightUp, color: 'text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/40' },
+    { action: 'expandOptions', label: 'Expand 옵션...', icon: SlidersHorizontal, color: 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/40' },
+    { action: 'setRoot', label: '기준 객체로 보기', icon: Crosshair, color: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/40' },
+    linkExistingItem('Link Existing Nodes'),
+    copyGroup('Copy', [
+      copyItem('id', 'Object ID'),
+      copyItem('tnr', 'Type Name Rev'),
+      ...busQueryItems,
+      queryItem('revisions', 'temp query bus (All Revisions)'),
+    ]),
+  ],
+  edge: [
+    copyItem('id', 'Copy Relationship ID'),
+    queryItem('printConnection', 'print connection'),
+    queryItem('expandRel', 'expand bus (from, rel type)'),
+    queryItem('queryConnection', 'query connection'),
+  ],
+  cluster: [copyItem('memberIds', 'Copy Member IDs'), queryItem('expandCluster', 'expand bus (rel type)')],
+}
+
+const pairMenuItems = [
+  { action: 'compare', label: '두 객체 비교', icon: GitCompareArrows, color: violetColor },
+  { action: 'findPath', label: '경로 찾기', icon: Route, color: violetColor },
+]
+
+const multiMenuItems = (count) => [
+  linkExistingItem(`Link Existing Nodes (${count}개)`),
+  ...(count === 2 ? pairMenuItems : []),
+  copyGroup(`Copy (${count}개)`, [copyItem('id', 'Object IDs'), copyItem('tnr', 'Type Name Rev'), ...busQueryItems]),
+]
+
+const contextMenuItems = computed(() => {
+  const menu = contextMenu.value
+  if (!menu) return []
+  return menu.kind === 'multi' ? multiMenuItems(menu.targets.length) : graphMenuItems[menu.kind]
+})
 </script>
 
 <template>
   <div class="h-full flex flex-col bg-white dark:bg-[#282c34] relative overflow-hidden font-sans">
     <GraphToolbar
       v-model:isSearchPanelOpen="isSearchPanelOpen"
+      v-model:isRelationPanelOpen="isRelationPanelOpen"
       v-model:isDetailPanelOpen="isDetailPanelOpen"
       v-model:isMinimapOpen="isMinimapOpen"
+      v-model:isConsoleOpen="isConsoleOpen"
       v-model:graphFilter="graphFilter"
+      v-model:layoutType="layoutType"
       :form="searchForm"
       :isSearching="isSearching"
       :isLoading="isLoading"
       :isDark="isDark"
       :connection="connection"
+      :history="rootHistory"
+      :historyIndex="historyIndex"
       @search="onSearch"
       @resetView="resetView"
+      @fit="fitView"
       @clear="clearGraph"
       @toggleTheme="toggleTheme"
       @reconnect="reconnect"
+      @back="goBack"
+      @forward="goForward"
+      @go="goHistory"
     />
     <div
       v-if="errorMsg"
@@ -92,28 +198,33 @@ const graphMenuItems = [
         @select="loadRoot"
         @close="isSearchPanelOpen = false"
       />
-      <div class="flex-1 h-full min-w-0 relative">
-        <div
-          ref="cyContainer"
-          class="w-full h-full outline-none select-none overflow-hidden bg-white dark:bg-[#282c34]"
-          @mouseleave="hideTooltip"
-        ></div>
-        <div
-          class="absolute bottom-2 right-2 z-10 w-60 h-44 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90"
-          :class="!(isMinimapOpen && hasElements) && 'invisible'"
-          @mouseenter="hideTooltip"
-        >
-          <div ref="navContainer" class="w-full h-full relative overflow-hidden"></div>
+      <RelationPanel v-if="isRelationPanelOpen" :state="relationFilterState" @close="isRelationPanelOpen = false" />
+      <div class="flex-1 h-full min-w-0 flex flex-col">
+        <div class="flex-1 min-h-0 relative">
+          <div
+            ref="cyContainer"
+            class="w-full h-full outline-none select-none overflow-hidden bg-white dark:bg-[#282c34]"
+            @mouseleave="hideTooltip"
+          ></div>
+          <div
+            class="absolute bottom-2 right-2 z-10 w-60 h-44 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90"
+            :class="!(isMinimapOpen && hasElements) && 'invisible'"
+            @mouseenter="hideTooltip"
+          >
+            <div ref="navContainer" class="w-full h-full relative overflow-hidden"></div>
+          </div>
+          <div
+            v-if="!hasElements"
+            class="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none text-gray-400 dark:text-[#5c6370] text-xs"
+          >
+            <Waypoints :size="40" class="opacity-50" />
+            <div v-if="searchResults.length">왼쪽 검색 결과에서 객체를 클릭하면 그래프가 표시됩니다.</div>
+            <div v-else>Type · Name · Rev 로 객체를 검색하거나 Object ID를 입력하세요.</div>
+            <div>클릭: 상세 정보 · 더블클릭: 연결 확장 · 우클릭: 메뉴</div>
+            <div>Ctrl/Shift+클릭 · Shift+드래그: 다중 선택</div>
+          </div>
         </div>
-        <div
-          v-if="!hasElements"
-          class="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none text-gray-400 dark:text-[#5c6370] text-xs"
-        >
-          <Waypoints :size="40" class="opacity-50" />
-          <div v-if="searchResults.length">왼쪽 검색 결과에서 객체를 클릭하면 그래프가 표시됩니다.</div>
-          <div v-else>Type · Name · Rev 로 객체를 검색하거나 Object ID를 입력하세요.</div>
-          <div>클릭: 상세 정보 · 더블클릭: 연결 확장 · 우클릭: 메뉴</div>
-        </div>
+        <MqlConsole v-if="isConsoleOpen" />
       </div>
       <DetailPanel
         :open="isDetailPanelOpen"
@@ -122,15 +233,25 @@ const graphMenuItems = [
         :isLoading="isDetailLoading"
         @close="isDetailPanelOpen = false"
         @expand="handlePanelExpand"
+        @openRoot="loadRoot"
+        @pin="pinClusterMember"
+        @expandCluster="expandCluster"
       />
     </div>
     <GraphTooltip v-if="tooltip" :tooltip="tooltip" />
     <ContextMenu
       v-if="contextMenu"
       :menu="contextMenu"
-      :items="graphMenuItems"
+      :items="contextMenuItems"
       @action="onContextAction"
       @close="hideContextMenu"
     />
+    <ExpandDialog
+      v-if="expandDialogId"
+      :label="expandDialogId"
+      @submit="submitExpandOptions"
+      @close="expandDialogId = ''"
+    />
+    <CompareDialog v-if="compareItems.length === 2" :items="compareItems" @close="compareItems = []" />
   </div>
 </template>

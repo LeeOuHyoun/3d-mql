@@ -30,12 +30,21 @@ export function useGraphEvents() {
       hideContextMenu()
     })
     cy.on('tapstart', hideContextMenu)
-    cy.on('cxttap', 'node', (evt) => {
-      const node = evt.target
-      if (node.data('isCluster')) return
+    cy.on('cxttap', 'node, edge', (evt) => {
+      const target = evt.target
+      if (target.id().startsWith('edge-cluster')) return
+      const selected = cy.nodes(':selected').filter((n) => !n.data('isCluster'))
+      const isMulti = target.isNode() && target.selected() && selected.length > 1
+      const kind = isMulti ? 'multi' : target.isEdge() ? 'edge' : target.data('isCluster') ? 'cluster' : 'node'
       const rect = containerRect()
       hideTooltip()
-      contextMenu.value = { x: rect.left + evt.renderedPosition.x, y: rect.top + evt.renderedPosition.y, node }
+      contextMenu.value = {
+        x: rect.left + evt.renderedPosition.x,
+        y: rect.top + evt.renderedPosition.y,
+        target,
+        kind,
+        targets: isMulti ? selected.toArray() : [target],
+      }
     })
   }
 

@@ -1,4 +1,18 @@
-export const getLayoutOptions = (isFastMode, shouldAnimate, fit) => {
+export const getLayoutOptions = (isFastMode, shouldAnimate, fit, layoutType) => {
+  if (layoutType === 'flow-tb' || layoutType === 'flow-lr') {
+    return {
+      name: 'dagre',
+      rankDir: layoutType === 'flow-tb' ? 'TB' : 'LR',
+      nodeSep: 50,
+      rankSep: 100,
+      animate: isFastMode ? false : shouldAnimate,
+      fit,
+      padding: 50,
+      spacingFactor: 1.2,
+      nodeDimensionsIncludeLabels: true,
+    }
+  }
+
   if (isFastMode) {
     return {
       name: 'fcose',

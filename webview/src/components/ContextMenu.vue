@@ -1,4 +1,6 @@
 <script setup>
+import ContextMenuItem from './ContextMenuItem.vue'
+
 const props = defineProps({
   menu: { type: Object, required: true },
   items: { type: Array, required: true },
@@ -17,24 +19,47 @@ const handleEscape = (e) => {
 
 useEventListener(window, 'keydown', handleEscape, { capture: true })
 useEventListener(window, 'scroll', () => emit('close'), { capture: true, passive: true })
+
+const { width, height } = useElementSize(menuRef, undefined, { box: 'border-box' })
+const { width: windowWidth, height: windowHeight } = useWindowSize()
+const left = computed(() => Math.max(0, Math.min(props.menu.x, windowWidth.value - width.value - 8)))
+const top = computed(() => Math.max(0, Math.min(props.menu.y, windowHeight.value - height.value - 8)))
+const isSubmenuFlipped = computed(() => left.value + width.value * 2 > windowWidth.value)
+
+const openKey = ref('')
+
+const handleSelect = (item) => {
+  if (item.children) openKey.value = item.action
+  else emit('action', item.action)
+}
+
+const emitAction = (action) => emit('action', action)
+
+const panelClass =
+  'py-1 min-w-44 rounded-lg border shadow-xl text-xs bg-white dark:bg-[#282c34] border-gray-200 dark:border-[#3e4451]'
 </script>
 
 <template>
   <div
     ref="menuRef"
-    class="fixed z-50 ml-1 py-1 min-w-44 rounded-lg border shadow-xl text-xs bg-white dark:bg-[#282c34] border-gray-200 dark:border-[#3e4451]"
-    :style="{ left: `${props.menu.x}px`, top: `${props.menu.y}px` }"
+    :class="['fixed z-50 ml-1', panelClass]"
+    :style="{ left: `${left}px`, top: `${top}px` }"
     @contextmenu.prevent
   >
-    <button
-      v-for="item in props.items"
-      :key="item.action"
-      class="w-full flex items-center gap-2 px-3 py-2 font-semibold border-none bg-transparent cursor-pointer whitespace-nowrap transition-colors"
-      :class="item.color"
-      @click="emit('action', item.action)"
-    >
-      <component :is="item.icon" :size="14" />
-      {{ item.label }}
-    </button>
+    <div v-for="item in props.items" :key="item.action" class="relative" @mouseenter="openKey = item.action">
+      <ContextMenuItem :item="item" @select="handleSelect" @action="emitAction" />
+      <div
+        v-if="item.children && openKey === item.action"
+        :class="['absolute -top-1', isSubmenuFlipped ? 'right-full mr-1' : 'left-full ml-1', panelClass]"
+      >
+        <ContextMenuItem
+          v-for="child in item.children"
+          :key="child.action"
+          :item="child"
+          @select="handleSelect"
+          @action="emitAction"
+        />
+      </div>
+    </div>
   </div>
 </template>

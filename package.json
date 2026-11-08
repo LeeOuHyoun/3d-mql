@@ -2,7 +2,7 @@
   "name": "3d-mql",
   "displayName": "3D MQL Graph",
   "description": "ENOVIA MQL로 객체와 관계를 그래프로 탐색합니다.",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -22,6 +22,86 @@
       {
         "command": "3d-mql.openGraph",
         "title": "3D MQL: 새 관계 그래프 열기"
+      },
+      {
+        "command": "3d-mql.graph.clear",
+        "title": "3D MQL: 그래프 지우기"
+      },
+      {
+        "command": "3d-mql.graph.fit",
+        "title": "3D MQL: 화면 맞춤"
+      },
+      {
+        "command": "3d-mql.graph.relationPanel",
+        "title": "3D MQL: 관계 필터 · 범례 패널 열기/닫기"
+      },
+      {
+        "command": "3d-mql.graph.detailPanel",
+        "title": "3D MQL: 상세 패널 열기/닫기"
+      },
+      {
+        "command": "3d-mql.graph.minimap",
+        "title": "3D MQL: 미니맵 열기/닫기"
+      },
+      {
+        "command": "3d-mql.graph.console",
+        "title": "3D MQL: MQL 콘솔 열기/닫기"
+      },
+      {
+        "command": "3d-mql.graph.back",
+        "title": "3D MQL: 이전 기준 객체"
+      },
+      {
+        "command": "3d-mql.graph.forward",
+        "title": "3D MQL: 다음 기준 객체"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "3d-mql.graph.clear",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
+        },
+        {
+          "command": "3d-mql.graph.fit",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
+        },
+        {
+          "command": "3d-mql.graph.relationPanel",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
+        },
+        {
+          "command": "3d-mql.graph.detailPanel",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
+        },
+        {
+          "command": "3d-mql.graph.minimap",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
+        },
+        {
+          "command": "3d-mql.graph.console",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
+        },
+        {
+          "command": "3d-mql.graph.back",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
+        },
+        {
+          "command": "3d-mql.graph.forward",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "3d-mql.graph.clear",
+        "key": "ctrl+l",
+        "when": "activeWebviewPanelId == '3d-mql.graph'"
+      },
+      {
+        "command": "3d-mql.graph.minimap",
+        "key": "alt+m",
+        "when": "activeWebviewPanelId == '3d-mql.graph'"
       }
     ],
     "configuration": {
@@ -51,6 +131,7 @@
   "dependencies": {
     "@lucide/vue": "^1.69.0",
     "cytoscape": "^3.34.4",
+    "cytoscape-dagre": "^2.5.0",
     "cytoscape-fcose": "^2.2.0",
     "cytoscape-navigator": "^2.0.2",
     "lodash-es": "^4.18.1",
