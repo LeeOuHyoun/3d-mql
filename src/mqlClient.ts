@@ -1,27 +1,103 @@
-import { MqlSession } from './session';
+import { MqlSession, type Pipe } from './session';
 
 export type ClientStatus = 'connecting' | 'ready' | 'failed' | 'ended';
 
-type Waiter<T> = { resolve: (value: T) => void; reject: (error: Error) => void };
+type Timer = ReturnType<typeof setTimeout>;
+type Pending = { resolve: (text: string) => void; reject: (error: Error) => void };
+type Waiter = Pending & { command: string; at: number; lines: string[]; timer?: Timer; discard?: boolean };
+type Learning = Pending & {
+  command: string;
+  at: number;
+  lines: string[];
+  sent: number;
+  candidate?: string[];
+  verifyFrom: number;
+  timer: Timer;
+};
 
 const startTimeoutMs = 30000;
+const learnTimeoutMs = 120000;
 const responseTimeoutMs = 60000;
-const markerGraceMs = 30;
+const learnQuietMs = 100;
+const trailingQuietMs = 30;
 const markerCommand = 'print context;';
-const promptPattern = /MQL<\d*>\s*$/;
 const promptsPattern = /MQL<\d*>/g;
 const errorPattern = /^\s*(?:System )?Error:.*$/gm;
+const quotedPattern = /"[^"]*"|'[^']*'/g;
+const contextPattern = /(^|;)\s*(set|push|pop)\b|\bcont/i;
+const pipes = ['out', 'err'] as const;
+
+const withSemicolon = (command: string) => {
+  const text = command.trim();
+  return !text || text.endsWith(';') ? text : `${text};`;
+};
+
+const changesContext = (command: string) => contextPattern.test(command.replace(quotedPattern, '""'));
+
+const cleanLine = (line: string) => line.replace(promptsPattern, '');
+
+const valuesOf = (lines: string[]) => lines.map((line) => line.trim()).filter(Boolean);
+
+const sameBlock = (a: string[], b: string[]) => a.length === b.length && a.every((value, index) => value === b[index]);
+
+function lastValues(lines: string[], count: number) {
+  const values: string[] = [];
+  for (let index = lines.length - 1; index >= 0 && values.length < count; index--) {
+    const value = lines[index].trim();
+    if (value) values.unshift(value);
+  }
+  return values;
+}
+
+function doubledTail(values: string[]) {
+  for (let size = 1; size <= Math.min(10, Math.floor(values.length / 2)); size++) {
+    const tail = values.slice(-size);
+    if (sameBlock(values.slice(-size * 2, -size), tail)) return tail;
+  }
+  return undefined;
+}
+
+function countBlocks(values: string[], block: string[]) {
+  let count = 0;
+  for (let index = 0; index + block.length <= values.length; ) {
+    if (sameBlock(values.slice(index, index + block.length), block)) {
+      count++;
+      index += block.length;
+    } else index++;
+  }
+  return count;
+}
+
+function stripBlocks(lines: string[], block: string[], count: number) {
+  let end = lines.length;
+  for (let removed = 0; removed < count; removed++) {
+    let index = end;
+    let matched = block.length;
+    while (index > 0 && matched > 0) {
+      index--;
+      const value = lines[index].trim();
+      if (!value) continue;
+      if (value !== block[matched - 1]) return lines.slice(0, end);
+      matched--;
+    }
+    if (matched) return lines.slice(0, end);
+    end = index;
+  }
+  return lines.slice(0, end);
+}
 
 export class MqlClient {
   private readonly session: MqlSession;
-  private buffer = '';
-  private pending: Waiter<string> | undefined;
-  private startWaiter: Waiter<void> | undefined;
+  private readonly remainders: Record<Pipe, string> = { out: '', err: '' };
+  private readonly flushTimers: Partial<Record<Pipe, Timer>> = {};
+  private waiters: Waiter[] = [];
+  private drainers: (() => void)[] = [];
+  private learning: Learning | undefined;
+  private learnTimer: Timer | undefined;
+  private startWaiter: { resolve: () => void; reject: (error: Error) => void } | undefined;
   private starting: Promise<void> | undefined;
-  private queue: Promise<unknown> = Promise.resolve();
-  private sent: { command: string; at: number } | undefined;
-  private marker: string | undefined;
-  private responseTimer: ReturnType<typeof setTimeout> | undefined;
+  private gate: Promise<unknown> = Promise.resolve();
+  private marker: string[] | undefined;
 
   constructor(
     private readonly contextCommand: () => string,
@@ -29,15 +105,8 @@ export class MqlClient {
     private readonly log: (text: string) => void,
   ) {
     this.session = new MqlSession({
-      output: (text) => {
-        if (!this.pending) return;
-        this.buffer += text;
-        if (!this.marker || !this.stripPrompts().endsWith(this.marker)) return;
-        clearTimeout(this.responseTimer);
-        this.responseTimer = setTimeout(() => this.settle(), markerGraceMs);
-      },
+      output: (text, pipe) => this.onOutput(text, pipe),
       ready: () => this.startWaiter?.resolve(),
-      released: () => this.settle(),
       failed: () => this.abort('failed', 'mql을 실행할 수 없습니다. PATH에 mql이 있는지 확인하세요.'),
       ended: (text) => this.abort('ended', text || 'MQL 세션이 종료되었습니다.'),
       batch: () => {},
@@ -63,11 +132,15 @@ export class MqlClient {
   }
 
   run(command: string): Promise<string> {
-    const task = this.queue.then(async () => {
+    const text = withSemicolon(command);
+    const exclusive = changesContext(text);
+    const task = this.gate.then(async () => {
       await this.start();
-      return this.exec(command);
+      if (!exclusive) return this.enqueue(text);
+      await this.drain();
+      return this.learn(text);
     });
-    this.queue = task.catch(() => undefined);
+    if (exclusive) this.gate = task.catch(() => undefined);
     return task;
   }
 
@@ -95,55 +168,140 @@ export class MqlClient {
       this.session.start();
     });
     this.startWaiter = undefined;
-    const command = this.contextCommand().trim();
-    if (command) await this.exec(command);
-    this.marker = (await this.exec(markerCommand)).replace(promptsPattern, '').trim() || undefined;
+    await this.learn(withSemicolon(this.contextCommand()));
     this.log(`marker=${JSON.stringify(this.marker)}`);
     this.onStatus('ready');
   }
 
-  private exec(command: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      if (!(this.marker ? this.session.canSend() : this.session.arm())) {
-        reject(new Error('MQL 세션에 명령을 보낼 수 없습니다.'));
+  private enqueue(command: string) {
+    return new Promise<string>((resolve, reject) => {
+      if (!this.marker) {
+        reject(new Error('MQL 세션이 준비되지 않았습니다.'));
         return;
       }
-      this.buffer = '';
-      this.pending = { resolve, reject };
-      const text = command.trim().endsWith(';') ? command.trim() : `${command.trim()};`;
-      this.sent = { command: text, at: Date.now() };
-      if (this.session.send(this.marker ? `${text}\n${markerCommand}` : text)) {
-        if (this.marker) this.responseTimer = setTimeout(() => this.settle(), responseTimeoutMs);
+      this.waiters.push({ command, at: Date.now(), lines: [], resolve, reject });
+      if (!this.session.send(`${command}\n${markerCommand}`)) {
+        this.waiters.pop();
+        reject(new Error('MQL 명령 전송에 실패했습니다.'));
         return;
       }
-      this.pending = undefined;
-      reject(new Error('MQL 명령 전송에 실패했습니다.'));
+      this.arm(this.waiters[0]);
     });
   }
 
-  private stripPrompts() {
-    return this.buffer.replace(promptsPattern, '').trimEnd();
+  private learn(command: string) {
+    return new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(
+        () => this.finishLearning(new Error('MQL 응답 확인 시간이 초과되었습니다.')),
+        learnTimeoutMs,
+      );
+      this.learning = { command: command || markerCommand, at: Date.now(), lines: [], sent: 2, verifyFrom: 0, timer, resolve, reject };
+      const commands = [command, markerCommand, markerCommand].filter(Boolean).join('\n');
+      if (!this.session.send(commands)) this.finishLearning(new Error('MQL 명령 전송에 실패했습니다.'));
+    });
   }
 
-  private settle() {
-    clearTimeout(this.responseTimer);
-    const pending = this.pending;
-    this.pending = undefined;
-    if (!pending) return;
-    const stripped = this.stripPrompts();
-    const index = this.marker ? stripped.lastIndexOf(this.marker) : -1;
-    const text =
-      this.marker && index >= 0
-        ? stripped.slice(0, index) + stripped.slice(index + this.marker.length)
-        : this.buffer.replace(promptPattern, '');
-    this.buffer = '';
-    if (this.sent) {
-      const elapsed = Date.now() - this.sent.at;
-      this.log(`${elapsed}ms prompt=${this.session.prompted} > ${this.sent.command}\n${text.slice(0, 2000)}`);
+  private drain() {
+    return this.waiters.length ? new Promise<void>((resolve) => this.drainers.push(resolve)) : Promise.resolve();
+  }
+
+  private arm(waiter: Waiter | undefined) {
+    if (!waiter || waiter.timer || waiter.discard) return;
+    waiter.timer = setTimeout(() => {
+      waiter.discard = true;
+      this.log(`timeout > ${waiter.command}`);
+      waiter.reject(new Error('MQL 응답 시간이 초과되었습니다.'));
+      this.arm(this.waiters[this.waiters.indexOf(waiter) + 1]);
+    }, responseTimeoutMs);
+  }
+
+  private onOutput(text: string, pipe: Pipe) {
+    const lines = (this.remainders[pipe] + text).split(/\r?\n/);
+    this.remainders[pipe] = lines.pop() ?? '';
+    lines.forEach((line) => this.onLine(cleanLine(line)));
+    if (this.learning) {
+      clearTimeout(this.learnTimer);
+      this.learnTimer = setTimeout(() => this.checkLearning(), learnQuietMs);
+    } else this.scheduleFlush(pipe);
+  }
+
+  private onLine(line: string) {
+    if (this.learning) {
+      this.learning.lines.push(line);
+      return;
     }
+    const head = this.waiters[0];
+    const marker = this.marker;
+    if (!head || !marker) return;
+    head.lines.push(line);
+    if (line.trim() !== marker[marker.length - 1] || !sameBlock(lastValues(head.lines, marker.length), marker)) return;
+    this.waiters.shift();
+    clearTimeout(head.timer);
+    const text = stripBlocks(head.lines, marker, 1).join('\n');
+    this.logResponse(head.command, head.at, text);
+    if (!head.discard) this.settle(head, text);
+    this.arm(this.waiters[0]);
+    if (!this.waiters.length) this.drainers.splice(0).forEach((resolve) => resolve());
+  }
+
+  private scheduleFlush(pipe: Pipe) {
+    clearTimeout(this.flushTimers[pipe]);
+    const rest = this.remainders[pipe];
+    const last = this.marker?.[this.marker.length - 1];
+    if (!last || cleanLine(rest).trim() !== last) return;
+    this.flushTimers[pipe] = setTimeout(() => {
+      if (this.remainders[pipe] !== rest) return;
+      this.remainders[pipe] = '';
+      this.onLine(cleanLine(rest));
+    }, trailingQuietMs);
+  }
+
+  private checkLearning() {
+    const learning = this.learning;
+    if (!learning) return;
+    const tentative = pipes.map((pipe) => cleanLine(this.remainders[pipe])).filter((line) => line.trim());
+    const values = valuesOf([...learning.lines, ...tentative]);
+    const candidate = doubledTail(values);
+    if (!candidate || countBlocks(values, candidate) < learning.sent) return;
+    if (!learning.candidate || !sameBlock(learning.candidate, candidate)) {
+      learning.candidate = candidate;
+      learning.verifyFrom = values.length;
+      learning.sent += 1;
+      if (!this.session.send(markerCommand)) this.finishLearning(new Error('MQL 명령 전송에 실패했습니다.'));
+      return;
+    }
+    if (!countBlocks(values.slice(learning.verifyFrom), candidate)) return;
+    learning.lines.push(...tentative);
+    pipes.forEach((pipe) => {
+      if (cleanLine(this.remainders[pipe]).trim()) this.remainders[pipe] = '';
+    });
+    this.marker = candidate;
+    this.finishLearning();
+  }
+
+  private finishLearning(error?: Error) {
+    const learning = this.learning;
+    if (!learning) return;
+    this.learning = undefined;
+    clearTimeout(learning.timer);
+    clearTimeout(this.learnTimer);
+    if (error) {
+      learning.reject(error);
+      return;
+    }
+    const text = stripBlocks(learning.lines, this.marker ?? [], learning.sent).join('\n');
+    this.logResponse(learning.command, learning.at, text);
+    this.settle(learning, text);
+  }
+
+  private settle(pending: Pending, text: string) {
     const errors = text.match(errorPattern);
     if (errors) pending.reject(new Error(errors.map((line) => line.trim()).join('\n')));
     else pending.resolve(text);
+  }
+
+  private logResponse(command: string, at: number, text: string) {
+    this.log(`${Date.now() - at}ms > ${command}\n${text.slice(0, 2000)}`);
   }
 
   private abort(status: ClientStatus, message: string) {
@@ -154,12 +312,17 @@ export class MqlClient {
   }
 
   private rejectAll(error: Error) {
-    const pending = this.pending;
-    const startWaiter = this.startWaiter;
-    this.pending = undefined;
+    this.waiters.splice(0).forEach((waiter) => {
+      clearTimeout(waiter.timer);
+      if (!waiter.discard) waiter.reject(error);
+    });
+    this.drainers.splice(0).forEach((resolve) => resolve());
+    this.finishLearning(error);
+    this.startWaiter?.reject(error);
     this.startWaiter = undefined;
-    this.buffer = '';
-    pending?.reject(error);
-    startWaiter?.reject(error);
+    pipes.forEach((pipe) => {
+      clearTimeout(this.flushTimers[pipe]);
+      this.remainders[pipe] = '';
+    });
   }
 }

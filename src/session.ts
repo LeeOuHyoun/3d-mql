@@ -6,20 +6,18 @@ const openDelayMs = 200;
 const promptDelayMs = 80;
 const immediateExitMs = 2000;
 const batchWaitMs = 20000;
-const quietMs = 1500;
 const startupLimit = 16384;
 
 export type MqlSessionEvents = {
-  output: (text: string) => void;
+  output: (text: string, pipe: Pipe) => void;
   ready: () => void;
-  released: () => void;
   failed: () => void;
   ended: (text?: string) => void;
   batch: () => void;
   prompted: () => void;
 };
 
-type Pipe = "out" | "err";
+export type Pipe = "out" | "err";
 
 export class MqlSession {
   private generation = 0;
@@ -30,11 +28,8 @@ export class MqlSession {
   private promptSeen = false;
   private sent = false;
   private prompt: string | undefined;
-  private hold = false;
-  private holdEarly = false;
   private parsing = false;
   private promptWait = false;
-  private releaseWait = false;
   private lines: Record<Pipe, string> = { out: "", err: "" };
   private startup = "";
   private startedAt = 0;
@@ -42,7 +37,6 @@ export class MqlSession {
   private trailTimer: ReturnType<typeof setTimeout> | undefined;
   private trailPipe: Pipe | undefined;
   private batchTimer: ReturnType<typeof setTimeout> | undefined;
-  private quietTimer: ReturnType<typeof setTimeout> | undefined;
   private decoders: Record<Pipe, TextDecoder> = {
     out: new TextDecoder(),
     err: new TextDecoder(),
@@ -52,10 +46,6 @@ export class MqlSession {
 
   get running(): boolean {
     return this.active;
-  }
-
-  get prompted(): boolean {
-    return this.promptSeen;
   }
 
   start() {
@@ -68,11 +58,8 @@ export class MqlSession {
     this.promptSeen = false;
     this.sent = false;
     this.prompt = undefined;
-    this.hold = false;
-    this.holdEarly = false;
     this.parsing = false;
     this.promptWait = false;
-    this.releaseWait = false;
     this.lines = { out: "", err: "" };
     this.trailPipe = undefined;
     this.startup = "";
@@ -114,14 +101,6 @@ export class MqlSession {
     if (!this.canSend()) return false;
     this.sent = true;
     this.proc?.stdin?.write(`${text}\n`);
-    this.scheduleQuiet();
-    return true;
-  }
-
-  arm(): boolean {
-    if (!this.canSend()) return false;
-    this.hold = true;
-    this.holdEarly = !this.promptSeen;
     return true;
   }
 
@@ -143,6 +122,7 @@ export class MqlSession {
     }
     this.proc = proc;
     this.startedAt = Date.now();
+    this.scheduleOpen();
     proc.on("error", () => this.fail(generation));
     proc.on("exit", () => this.onExit(generation));
     proc.stdout?.on("data", (chunk: Uint8Array) =>
@@ -206,9 +186,8 @@ export class MqlSession {
       this.startup += text;
       if (this.startup.length > startupLimit) this.startup = this.startup.slice(-startupLimit);
     }
-    this.events.output(text);
+    this.events.output(text, pipe);
     this.scheduleOpen();
-    this.scheduleQuiet();
     const nested = this.parsing;
     const generation = this.generation;
     this.parsing = true;
@@ -228,10 +207,6 @@ export class MqlSession {
       this.promptWait = false;
       this.events.prompted();
       this.open();
-    }
-    if (this.releaseWait && generation === this.generation) {
-      this.releaseWait = false;
-      this.events.released();
     }
   }
 
@@ -292,42 +267,13 @@ export class MqlSession {
       }
       return;
     }
-    if (!this.hold) {
-      this.prompt = candidate;
-      return;
-    }
     this.prompt = candidate;
-    this.release();
-  }
-
-  private release() {
-    if (!this.hold) return;
-    this.hold = false;
-    this.holdEarly = false;
-    if (this.quietTimer) clearTimeout(this.quietTimer);
-    this.quietTimer = undefined;
-    if (this.parsing) this.releaseWait = true;
-    else this.events.released();
-  }
-
-  private scheduleQuiet() {
-    if (this.quietTimer) clearTimeout(this.quietTimer);
-    this.quietTimer = undefined;
-    if (!this.hold || (this.promptSeen && !this.holdEarly)) return;
-    const generation = this.generation;
-    this.quietTimer = setTimeout(() => {
-      this.quietTimer = undefined;
-      if (generation !== this.generation) return;
-      this.release();
-    }, quietMs);
   }
 
   private clearTimers() {
     if (this.openTimer) clearTimeout(this.openTimer);
     if (this.trailTimer) clearTimeout(this.trailTimer);
     if (this.batchTimer) clearTimeout(this.batchTimer);
-    if (this.quietTimer) clearTimeout(this.quietTimer);
-    this.quietTimer = undefined;
     this.openTimer = undefined;
     this.trailTimer = undefined;
     this.trailPipe = undefined;

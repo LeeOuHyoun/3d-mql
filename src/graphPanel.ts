@@ -67,6 +67,7 @@ export class GraphPanel {
       },
       (text) => output.appendLine(`[${new Date().toISOString()}] [${slot}] ${text}`),
     );
+    void this.client.start().catch(() => undefined);
     this.panel.webview.html = this.html(root);
     this.disposables.push(
       this.panel.onDidDispose(() => this.dispose()),

@@ -1,4 +1,4 @@
-import { countBy, sortBy, uniqBy, union, without, xor } from 'lodash-es'
+import { countBy, debounce, sortBy, uniqBy, union, without, xor } from 'lodash-es'
 
 const palette = ['#3b82f6', '#16a34a', '#d97706', '#9333ea', '#dc2626', '#0891b2', '#c2410c', '#4f46e5', '#db2777', '#65a30d']
 const edgeKey = (e) => (e.data('isReverse') ? `rev:${e.data('label')}` : e.data('label'))
@@ -23,13 +23,13 @@ export function useRelationFilter(cyRef, rootId) {
     const cy = cyRef.value
     if (!cy) return
     const hidden = new Set(hiddenRelations.value)
-    const isVisible = (e) => !hidden.has(edgeKey(e))
+    const isHidden = (e) => hidden.has(edgeKey(e))
     cy.batch(() => {
-      cy.edges().forEach((e) => e.style('display', isVisible(e) ? 'element' : 'none'))
-      cy.nodes().forEach((n) => {
-        const visible = !hidden.size || n.id() === rootId.value || n.connectedEdges().some(isVisible)
-        n.style('display', visible ? 'element' : 'none')
-      })
+      cy.elements('.filtered-out').removeClass('filtered-out')
+      if (!hidden.size) return
+      const edges = cy.edges().filter(isHidden)
+      const nodes = cy.nodes().filter((n) => n.id() !== rootId.value && n.connectedEdges().every(isHidden))
+      edges.union(nodes).addClass('filtered-out')
     })
   }
 
@@ -67,37 +67,46 @@ export function useRelationFilter(cyRef, rootId) {
     const nodes = cy.nodes().filter((n) => !n.data('isCluster'))
     const field = colorBy.value
     if (field === 'none') {
-      nodes.removeData('color')
+      cy.nodes('[color]').removeData('color')
       legend.value = []
       return
     }
     const counts = countBy(nodes.map((n) => valueOf(n, field)))
     const values = sortBy(Object.keys(counts))
     const colors = Object.fromEntries(values.map((value, i) => [value, palette[i % palette.length]]))
-    cy.batch(() => nodes.forEach((n) => n.data('color', colors[valueOf(n, field)])))
+    cy.batch(() =>
+      nodes.forEach((n) => {
+        const color = colors[valueOf(n, field)]
+        if (n.data('color') !== color) n.data('color', color)
+      }),
+    )
     legend.value = values.map((value) => ({ value, color: colors[value], count: counts[value] }))
   }
 
   watch(colorBy, applyColors)
 
-  const highlight = (matched) => {
+  const applyHighlight = debounce((select) => {
     const cy = cyRef.value
-    if (!cy || !matched) return
+    if (!cy) return
+    const matched = select?.(cy)
     cy.batch(() => {
-      cy.elements().removeClass('hover-match').addClass('hover-dimmed')
-      matched.removeClass('hover-dimmed').addClass('hover-match')
+      cy.elements('.hover-match, .hover-dimmed').removeClass('hover-match hover-dimmed')
+      if (!matched) return
+      cy.elements().not(matched).addClass('hover-dimmed')
+      matched.addClass('hover-match')
     })
-  }
+  }, 40)
 
-  const highlightRelation = (key) => {
-    const edges = cyRef.value?.edges().filter((e) => edgeKey(e) === key)
-    highlight(edges?.union(edges.connectedNodes()))
-  }
+  const highlightRelation = (key) =>
+    applyHighlight((cy) => {
+      const edges = cy.edges().filter((e) => edgeKey(e) === key)
+      return edges.union(edges.connectedNodes())
+    })
 
   const highlightLegend = (value) =>
-    highlight(cyRef.value?.nodes().filter((n) => !n.data('isCluster') && valueOf(n, colorBy.value) === value))
+    applyHighlight((cy) => cy.nodes().filter((n) => !n.data('isCluster') && valueOf(n, colorBy.value) === value))
 
-  const clearHighlight = () => cyRef.value?.elements().removeClass('hover-match hover-dimmed')
+  const clearHighlight = () => applyHighlight(null)
 
   const refreshRelations = () => {
     if (!cyRef.value) return

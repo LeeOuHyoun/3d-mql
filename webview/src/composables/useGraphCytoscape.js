@@ -1,23 +1,23 @@
 import cytoscape from 'cytoscape'
 import fcose from 'cytoscape-fcose'
 import dagre from 'cytoscape-dagre'
-import navigator from 'cytoscape-navigator'
-import 'cytoscape-navigator/cytoscape.js-navigator.css'
-import { debounce, uniqBy, partition } from 'lodash-es'
+import { isEqual, partition, uniqBy } from 'lodash-es'
 import { getCytoscapeStyle } from '@/graph/graphStyles.js'
 import { getLayoutOptions } from '@/graph/graphLayouts.js'
 import { processRadialElems } from '@/graph/graphDataProcessor.js'
 import { useGraphEvents } from './useGraphEvents.js'
+import { useMinimap } from './useMinimap.js'
 
 cytoscape.use(fcose)
 cytoscape.use(dagre)
-navigator(cytoscape)
 cytoscape.warnings(false)
 
 const CLUSTER_THRESHOLD = 10
-const FAST_MODE_THRESHOLD = 30
 const FIT_MAX_ZOOM = 1
-const USER_MAX_ZOOM = 1e50
+const FIT_PADDING = 50
+const ANIMATION_MS = 400
+const ANIMATION_EASING = 'ease-out-cubic'
+const ANIMATE_MAX_NODES = 300
 
 export function useGraphCytoscape(isDark, lastExpansionMode) {
   const cyRef = shallowRef(null)
@@ -30,106 +30,131 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   let activeLayout = null
   let wheelHandler = null
   const { tooltip, contextMenu, bindGraphEvents, hideTooltip, hideContextMenu } = useGraphEvents()
+  const { minimapCanvas, scheduleMinimap } = useMinimap(cyRef, isDark)
 
   const stopLayout = () => {
-    if (!activeLayout) return
-    activeLayout.stop()
+    activeLayout?.stop()
     activeLayout = null
-  }
-
-  const isFastMode = () => cyRef.value.nodes().length >= FAST_MODE_THRESHOLD
-
-  const runLayout = (options, onStop) => {
-    const start = (opts) => {
-      const layout = cyRef.value.layout(opts)
-      cyRef.value.maxZoom(FIT_MAX_ZOOM)
-      layout.one('layoutstop', () => {
-        cyRef.value?.maxZoom(USER_MAX_ZOOM)
-        onStop?.()
-      })
-      activeLayout = layout
-      layout.run()
-    }
-    try {
-      start(options)
-    } catch (e) {
-      if (options.name === 'fcose') start({ ...options, name: 'cose', animate: false })
-    }
-  }
-
-  const applyLayout = (animate = true, fit = true, centerNodeId = null) => {
-    if (!cyRef.value) return
-    stopLayout()
-    const fastMode = isFastMode()
-    const centerOnNode = () => {
-      const targetNode = cyRef.value?.getElementById(centerNodeId)
-      if (targetNode?.length > 0) cyRef.value.animate({ center: { eles: targetNode }, duration: 350, easing: 'ease-out' })
-    }
-    runLayout(
-      getLayoutOptions(fastMode, animate && !fastMode, centerNodeId ? false : fit, layoutType.value),
-      centerNodeId && centerOnNode,
-    )
-  }
-
-  const animateLayout = (fit) => {
-    const oldPositions = getPositions()
-    runLayout(getLayoutOptions(isFastMode(), false, fit, layoutType.value), () => {
-      const newPositions = getPositions()
-      cyRef.value.batch(() => {
-        cyRef.value.nodes().forEach((node) => {
-          const oldPos = oldPositions[node.id()]
-          const parentNode = lastExpandedNodeId.value && cyRef.value.getElementById(lastExpandedNodeId.value)
-          if (oldPos) node.position(oldPos)
-          else if (parentNode?.length > 0) node.position(parentNode.position())
-        })
-      })
-      cyRef.value.nodes().forEach((node) => {
-        const newPos = newPositions[node.id()]
-        if (newPos) node.animate({ position: newPos }, { duration: 400, easing: 'ease-out-quad' })
-      })
-    })
+    cyRef.value?.stop(true)
+    cyRef.value?.nodes().stop(true)
   }
 
   const getPositions = () => {
-    const p = {}
+    const positions = {}
     cyRef.value.nodes().forEach((n) => {
-      p[n.id()] = n.position()
+      positions[n.id()] = { ...n.position() }
     })
-    return p
+    return positions
+  }
+
+  const computePositions = (randomize) => {
+    const options = { ...getLayoutOptions(layoutType.value), randomize, animate: false, fit: false }
+    try {
+      cyRef.value.layout(options).run()
+    } catch {
+      cyRef.value.layout({ ...options, name: 'cose' }).run()
+    }
+    return getPositions()
+  }
+
+  const boxOf = (nodes, positions) => {
+    const box = { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity }
+    nodes.forEach((n) => {
+      const { x, y } = positions[n.id()] || n.position()
+      const w = n.outerWidth() / 2
+      const h = n.outerHeight() / 2
+      box.x1 = Math.min(box.x1, x - w)
+      box.y1 = Math.min(box.y1, y - h)
+      box.x2 = Math.max(box.x2, x + w)
+      box.y2 = Math.max(box.y2, y + h)
+    })
+    return box
+  }
+
+  const fitViewport = (nodes, positions, maxZoom = FIT_MAX_ZOOM) => {
+    const cy = cyRef.value
+    if (!nodes.length) return null
+    const box = boxOf(nodes, positions)
+    const width = cy.width()
+    const height = cy.height()
+    const fitZoom = Math.min((width - FIT_PADDING * 2) / (box.x2 - box.x1), (height - FIT_PADDING * 2) / (box.y2 - box.y1))
+    const zoom = Math.max(cy.minZoom(), Math.min(maxZoom, fitZoom))
+    return {
+      zoom,
+      pan: { x: width / 2 - (zoom * (box.x1 + box.x2)) / 2, y: height / 2 - (zoom * (box.y1 + box.y2)) / 2 },
+    }
+  }
+
+  const anchoredViewport = (anchor, positions) => {
+    const cy = cyRef.value
+    const zoom = cy.zoom()
+    const rendered = anchor.renderedPosition()
+    const target = positions[anchor.id()]
+    const pan = { x: rendered.x - zoom * target.x, y: rendered.y - zoom * target.y }
+    const group = anchor.closedNeighborhood('node:visible')
+    const box = boxOf(group, positions)
+    const inside =
+      box.x1 * zoom + pan.x >= 0 &&
+      box.y1 * zoom + pan.y >= 0 &&
+      box.x2 * zoom + pan.x <= cy.width() &&
+      box.y2 * zoom + pan.y <= cy.height()
+    return inside ? { zoom, pan } : fitViewport(group, positions, zoom)
+  }
+
+  const runLayout = ({ animate = true, fit = false, anchorId = null } = {}) => {
+    const cy = cyRef.value
+    if (!cy?.nodes().length) return
+    stopLayout()
+    hideTooltip()
+    const nodes = cy.nodes()
+    const start = getPositions()
+    const target = computePositions(fit)
+    cy.batch(() => nodes.forEach((n) => n.position(start[n.id()])))
+    const anchor = anchorId && cy.getElementById(anchorId)
+    const viewport = fit
+      ? fitViewport(cy.nodes(':visible'), target)
+      : anchor?.length && anchor.visible()
+        ? anchoredViewport(anchor, target)
+        : null
+    if (!animate || nodes.length > ANIMATE_MAX_NODES) {
+      cy.batch(() => nodes.forEach((n) => n.position(target[n.id()])))
+      if (viewport) cy.viewport(viewport)
+      return
+    }
+    activeLayout = cy.layout({
+      name: 'preset',
+      positions: (n) => target[n.id()],
+      animate: true,
+      animationDuration: ANIMATION_MS,
+      animationEasing: ANIMATION_EASING,
+      fit: false,
+    })
+    activeLayout.run()
+    if (viewport) cy.animate({ ...viewport, duration: ANIMATION_MS, easing: ANIMATION_EASING })
   }
 
   const updateElements = (elems) => {
-    cyRef.value.batch(() => {
-      const uniqueElems = uniqBy(elems, 'data.id')
-      const currentElements = cyRef.value.elements()
-
-      if (Math.abs(currentElements.length - uniqueElems.length) > FAST_MODE_THRESHOLD || uniqueElems.length > 100) {
-        currentElements.remove()
-        if (uniqueElems.length > 0) cyRef.value.add(uniqueElems)
-      } else {
-        const nextIds = new Set(uniqueElems.map((e) => e.data.id))
-        const toRemove = currentElements.filter((el) => !nextIds.has(el.id()))
-        if (toRemove.length > 0) cyRef.value.remove(toRemove)
-
-        const toAdd = []
-        uniqueElems.forEach((el) => {
-          const existing = cyRef.value.getElementById(el.data.id)
-          if (existing.length > 0) existing.data(el.data)
-          else toAdd.push(el)
-        })
-
-        if (toAdd.length) {
-          const [nodes, edges] = partition(toAdd, { group: 'nodes' })
-          if (nodes.length) cyRef.value.add(nodes)
-          if (edges.length) cyRef.value.add(edges)
-        }
-      }
-
-      cyRef.value.elements().forEach((el) => el.data('isExploring', false))
+    const cy = cyRef.value
+    cy.batch(() => {
+      const next = uniqBy(elems, 'data.id')
+      const nextIds = new Set(next.map((e) => e.data.id))
+      cy.elements()
+        .filter((el) => !nextIds.has(el.id()))
+        .remove()
+      const added = []
+      next.forEach((el) => {
+        const existing = cy.getElementById(el.data.id)
+        if (!existing.length) added.push(el)
+        else if (Object.keys(el.data).some((key) => !isEqual(existing.data(key), el.data[key]))) existing.data(el.data)
+      })
+      const [nodes, edges] = partition(added, { group: 'nodes' })
+      if (nodes.length) cy.add(nodes)
+      if (edges.length) cy.add(edges)
+      cy.elements('[?isExploring]').data('isExploring', false)
     })
   }
 
-  const syncGraph = (rawNodes, rawEdges, rootId, shouldLayout = true, animate = true, fit = true, isContextMenuAction = false) => {
+  const syncGraph = (rawNodes, rawEdges, rootId, layout = null) => {
     if (!cyRef.value) return
     stopLayout()
     clearPath()
@@ -145,23 +170,9 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     updateElements(elems)
     applyFilter()
     hasElements.value = cyRef.value.elements().length > 0
-    if (!shouldLayout) return
-    Promise.resolve().then(() => {
-      if (!cyRef.value) return
-      if (isContextMenuAction) animateLayout(fit)
-      else applyLayout(animate, fit, lastExpandedNodeId.value || null)
-    })
+    if (!layout) return
+    Promise.resolve().then(() => runLayout(layout))
   }
-
-  const applyLoD = debounce(() => {
-    if (!cyRef.value) return
-    const zoom = cyRef.value.zoom()
-    cyRef.value.batch(() => {
-      cyRef.value.elements().removeClass('lod-far lod-mid')
-      if (zoom < 0.2) cyRef.value.elements().addClass('lod-far')
-      else if (zoom < 0.5) cyRef.value.elements().addClass('lod-mid')
-    })
-  }, 100)
 
   const graphFilter = ref('')
 
@@ -169,8 +180,9 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     if (!cyRef.value) return
     const query = graphFilter.value.toLowerCase().trim()
     cyRef.value.batch(() => {
-      const all = cyRef.value.elements()
-      all.removeClass('search-match search-neighbor search-dimmed')
+      cyRef.value
+        .elements('.search-match, .search-neighbor, .search-dimmed')
+        .removeClass('search-match search-neighbor search-dimmed')
       if (!query) return
       const matchedNodes = cyRef.value
         .nodes()
@@ -181,37 +193,13 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
         .union(matchedEdges)
         .union(matchedEdges.connectedNodes())
       const neighbors = matchedNodes.neighborhood().union(matchedEdges.connectedNodes().neighborhood())
-      all.addClass('search-dimmed')
+      cyRef.value.elements().addClass('search-dimmed')
       core.removeClass('search-dimmed').addClass('search-match')
       neighbors.not(core).removeClass('search-dimmed').addClass('search-neighbor')
     })
   }
 
   watch(graphFilter, applyFilter)
-
-  const navContainer = ref(null)
-  let navInstance = null
-
-  const initNav = () => {
-    if (!cyRef.value || !navContainer.value) return
-    navContainer.value.id = `cy-nav-${Date.now()}`
-    navInstance = cyRef.value.navigator({
-      container: `#${navContainer.value.id}`,
-      viewLiveFramerate: 0,
-      thumbnailEventFramerate: 30,
-      thumbnailLiveFramerate: false,
-      dblClickDelay: 200,
-      removeCustomContainer: false,
-      rerenderDelay: 50,
-    })
-  }
-
-  const resizeNav = () => {
-    if (!navInstance || !cyRef.value) return
-    navInstance.resize()
-    cyRef.value.emit('viewport')
-    cyRef.value.notify({ type: 'render' })
-  }
 
   const initCytoscape = (handlers) => {
     if (!cyContainer.value) return
@@ -232,28 +220,25 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       })
     }
     cyContainer.value.addEventListener('wheel', wheelHandler, { passive: false })
-    cyRef.value.on('zoom', applyLoD)
-    cyRef.value.on('layoutstop', resizeNav)
     cyRef.value.on('tap', (evt) => evt.target === cyRef.value && clearPath())
+    cyRef.value.onRender(scheduleMinimap)
     bindGraphEvents(cyRef.value, cyContainer, handlers)
-    initNav()
   }
 
-  const resetView = () => applyLayout(true)
+  const resetView = () => runLayout({ fit: true })
 
   watch(layoutType, resetView)
 
-  const fitView = () => {
-    if (!cyRef.value) return
-    cyRef.value.maxZoom(FIT_MAX_ZOOM)
-    cyRef.value.animate({
-      fit: { eles: cyRef.value.elements(':visible'), padding: 50 },
-      duration: 300,
-      complete: () => cyRef.value?.maxZoom(USER_MAX_ZOOM),
-    })
+  const animateViewport = (viewport) => {
+    if (viewport) cyRef.value.animate({ ...viewport, duration: 300, easing: ANIMATION_EASING })
   }
 
-  const clearPath = () => cyRef.value?.elements().removeClass('path-match path-dimmed')
+  const fitView = () => {
+    if (cyRef.value) animateViewport(fitViewport(cyRef.value.nodes(':visible'), getPositions()))
+  }
+
+  const clearPath = () =>
+    cyRef.value?.elements('.path-match, .path-dimmed').removeClass('path-match path-dimmed')
 
   const findPath = (sourceId, targetId) => {
     if (!cyRef.value) return false
@@ -267,7 +252,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       cyRef.value.elements().addClass('path-dimmed')
       path.removeClass('path-dimmed').addClass('path-match')
     })
-    cyRef.value.animate({ fit: { eles: path, padding: 80 }, duration: 350 })
+    animateViewport(fitViewport(path.nodes(), getPositions()))
     return true
   }
 
@@ -279,19 +264,11 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       cyContainer.value.removeEventListener('wheel', wheelHandler)
       wheelHandler = null
     }
-    navInstance?.destroy()
-    navInstance = null
     cyRef.value?.destroy()
     cyRef.value = null
   }
 
-  useResizeObserver(
-    cyContainer,
-    debounce(() => {
-      cyRef.value?.resize()
-      resizeNav()
-    }, 150),
-  )
+  useResizeObserver(cyContainer, () => cyRef.value?.resize())
   watch(isDark, () => cyRef.value?.style(getCytoscapeStyle(isDark.value)))
 
   const toggleCluster = (clusterKey) =>
@@ -316,7 +293,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   return {
     cyRef,
     cyContainer,
-    navContainer,
+    minimapCanvas,
     graphFilter,
     hasElements,
     lastExpandedNodeId,

@@ -31,7 +31,7 @@ const {
   isDark,
   toggleTheme,
   cyContainer,
-  navContainer,
+  minimapCanvas,
   graphFilter,
   hasElements,
   tooltip,
@@ -72,8 +72,6 @@ const {
   pinClusterMember,
   expandCluster,
 } = useGraphExplorer()
-
-const handlePanelExpand = (id, direction) => expand(id, direction, true)
 
 const isMinimapOpen = useStorage('3d-mql-minimap-open', true)
 const isRelationPanelOpen = useStorage('3d-mql-relation-panel-open', false)
@@ -207,11 +205,11 @@ const contextMenuItems = computed(() => {
             @mouseleave="hideTooltip"
           ></div>
           <div
+            v-if="isMinimapOpen && hasElements"
             class="absolute bottom-2 right-2 z-10 w-60 h-44 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90"
-            :class="!(isMinimapOpen && hasElements) && 'invisible'"
             @mouseenter="hideTooltip"
           >
-            <div ref="navContainer" class="w-full h-full relative overflow-hidden"></div>
+            <canvas ref="minimapCanvas" class="block w-full h-full cursor-pointer"></canvas>
           </div>
           <div
             v-if="!hasElements"
@@ -232,7 +230,7 @@ const contextMenuItems = computed(() => {
         :detail="detail"
         :isLoading="isDetailLoading"
         @close="isDetailPanelOpen = false"
-        @expand="handlePanelExpand"
+        @expand="expand"
         @openRoot="loadRoot"
         @pin="pinClusterMember"
         @expandCluster="expandCluster"

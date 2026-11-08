@@ -132,6 +132,13 @@ const actionBtnClass =
     <div v-if="!props.item" class="flex-1 flex items-center justify-center p-4 text-xs text-gray-400 italic">
       노드나 관계를 선택하면 상세 정보가 표시됩니다.
     </div>
+    <div
+      v-else-if="props.item.isMulti"
+      class="flex-1 flex flex-col items-center justify-center gap-1 p-4 text-xs text-gray-500 dark:text-[#abb2bf]"
+    >
+      <div class="font-semibold">{{ props.item.count }}개 선택됨</div>
+      <div class="text-gray-400">선택한 노드를 우클릭하면 일괄 작업 메뉴가 열립니다.</div>
+    </div>
     <template v-else-if="props.item.isCluster">
       <div
         class="px-4 py-3 border-b border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#282c34] shrink-0 flex flex-col gap-2 text-xs"

@@ -8,6 +8,7 @@ export const getCytoscapeStyle = (isDarkVal) => [
       'background-color': '#61afef',
       color: '#fff',
       'font-size': '12px',
+      'min-zoomed-font-size': 5,
       width: 180,
       height: 50,
       padding: '12px',
@@ -42,6 +43,7 @@ export const getCytoscapeStyle = (isDarkVal) => [
     style: {
       label: 'data(displayName)',
       'font-size': '9px',
+      'min-zoomed-font-size': 5,
       color: isDarkVal ? '#abb2bf' : '#4b5563',
       width: 1.5,
       'line-color': isDarkVal ? '#4b5563' : '#d1d5db',
@@ -185,21 +187,9 @@ export const getCytoscapeStyle = (isDarkVal) => [
     },
   },
   {
-    selector: 'node.lod-far',
+    selector: '.filtered-out',
     style: {
-      'font-size': '0px',
-    },
-  },
-  {
-    selector: 'node.lod-mid',
-    style: {
-      'font-size': '10px',
-    },
-  },
-  {
-    selector: 'edge.lod-far, edge.lod-mid',
-    style: {
-      'font-size': '0px',
+      display: 'none',
     },
   },
 ]

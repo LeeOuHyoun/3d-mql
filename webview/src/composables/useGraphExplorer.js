@@ -1,3 +1,4 @@
+import { debounce } from 'lodash-es'
 import { getState, onMessage, post, request, setState } from '@/api.js'
 import { useTheme } from './useTheme.js'
 import { useGraphCytoscape } from './useGraphCytoscape.js'
@@ -5,6 +6,8 @@ import { useRelationFilter } from './useRelationFilter.js'
 import { useMqlConsole } from './useMqlConsole.js'
 
 export const objectIdPattern = /^(\d+\.\d+\.\d+\.\d+|[0-9a-f]{32})$/i
+const plainIdPattern = /^\d+\.\d+\.\d+\.\d+$/
+const DETAIL_CACHE_SIZE = 300
 
 export function useGraphExplorer() {
   const { isDark, toggleTheme } = useTheme()
@@ -12,7 +15,7 @@ export function useGraphExplorer() {
   const {
     cyRef,
     cyContainer,
-    navContainer,
+    minimapCanvas,
     graphFilter,
     hasElements,
     lastExpandedNodeId,
@@ -35,7 +38,10 @@ export function useGraphExplorer() {
   const errorMsg = ref('')
 
   const connection = ref({ state: 'connecting', message: '' })
-  const reconnect = () => post({ type: 'reconnect' })
+  const reconnect = () => {
+    detailCache.clear()
+    post({ type: 'reconnect' })
+  }
 
   tryOnScopeDispose(
     onMessage((message) => {
@@ -64,9 +70,10 @@ export function useGraphExplorer() {
 
   const toEdge = (e) => ({ ...e, source: e.from, target: e.to, displayName: e.label, isReverse: e.reverse })
 
-  const doSyncGraph = (shouldLayout = true, animate = true, fit = true, isContextMenuAction = false) => {
-    syncGraph(rawNodes, rawEdges, rootId.value, shouldLayout, animate, fit, isContextMenuAction)
+  const doSyncGraph = (layout = {}) => {
+    syncGraph(rawNodes, rawEdges, rootId.value, layout)
     refreshRelations()
+    onSelectionChange()
     persist()
   }
 
@@ -84,7 +91,7 @@ export function useGraphExplorer() {
     })
   }
 
-  const expand = async (id, direction, isContextMenuAction = false, options = null) => {
+  const expand = async (id, direction, options = null) => {
     cyRef.value?.getElementById(id).data('isExploring', true)
     isLoading.value = true
     errorMsg.value = ''
@@ -92,7 +99,7 @@ export function useGraphExplorer() {
       mergeExpansion(id, direction, await request('expand', { ...options, id, direction }), !options)
       lastExpansionMode.value = direction === 'to' ? 'backward' : 'forward'
       lastExpandedNodeId.value = id
-      doSyncGraph(true, true, true, isContextMenuAction)
+      doSyncGraph({ anchorId: id })
     } catch (e) {
       errorMsg.value = e.message
       cyRef.value?.nodes().data('isExploring', false)
@@ -106,7 +113,7 @@ export function useGraphExplorer() {
   const submitExpandOptions = (options) => {
     const id = expandDialogId.value
     expandDialogId.value = ''
-    expand(id, options.direction, true, options)
+    expand(id, options.direction, options)
   }
 
   const linkExisting = async (ids) => {
@@ -122,7 +129,7 @@ export function useGraphExplorer() {
         })
       const added = Object.keys(rawEdges).length - before
       post({ type: 'notify', text: added ? `기존 노드 사이의 관계 ${added}건을 연결했습니다.` : '새로 연결할 관계가 없습니다.' })
-      if (added) doSyncGraph(true, true, false, true)
+      if (added) doSyncGraph()
     } catch (e) {
       errorMsg.value = e.message
     } finally {
@@ -138,9 +145,11 @@ export function useGraphExplorer() {
     lastExpandedNodeId.value = null
     resetClusters()
     resetRelations()
+    detailTarget = null
     selectedItem.value = null
     detail.value = null
-    doSyncGraph(false)
+    isDetailLoading.value = false
+    doSyncGraph(null)
   }
 
   const rootHistory = ref([])
@@ -168,15 +177,18 @@ export function useGraphExplorer() {
     isLoading.value = true
     errorMsg.value = ''
     try {
-      const { summary } = await request('object', { id })
-      const expansion = await request('expand', { id: summary.id, direction: 'both' })
+      const [{ summary }, early] = await Promise.all([
+        requestDetail('object', id),
+        plainIdPattern.test(id) ? request('expand', { id, direction: 'both' }) : null,
+      ])
+      const expansion = early ?? (await request('expand', { id: summary.id, direction: 'both' }))
       clearGraph()
       rootId.value = summary.id
       rawNodes[summary.id] = toNode(summary)
       mergeExpansion(summary.id, 'both', expansion)
       lastExpansionMode.value = 'forward'
       if (record) recordHistory(summary)
-      doSyncGraph()
+      doSyncGraph({ fit: true })
       return true
     } catch (e) {
       errorMsg.value = e.message
@@ -221,7 +233,42 @@ export function useGraphExplorer() {
   const detail = ref(null)
   const isDetailLoading = ref(false)
   const isDetailPanelOpen = ref(true)
-  let detailSeq = 0
+  const detailCache = new Map()
+  let detailTarget = null
+  let isDetailBusy = false
+
+  const requestDetail = async (method, id) => {
+    const key = `${method}:${id}`
+    if (detailCache.has(key)) return detailCache.get(key)
+    const result = await request(method, { id })
+    detailCache.set(key, result)
+    if (detailCache.size > DETAIL_CACHE_SIZE) detailCache.delete(detailCache.keys().next().value)
+    return result
+  }
+
+  const finishDetail = (result) => {
+    detailTarget = null
+    detail.value = result
+    isDetailLoading.value = false
+  }
+
+  const loadDetail = async () => {
+    const target = detailTarget
+    if (isDetailBusy || !target) return
+    isDetailBusy = true
+    try {
+      const result = await requestDetail(target.method, target.id)
+      if (detailTarget === target) finishDetail(result)
+    } catch (e) {
+      if (detailTarget === target) {
+        errorMsg.value = e.message
+        finishDetail(null)
+      }
+    } finally {
+      isDetailBusy = false
+      loadDetail()
+    }
+  }
 
   const toSelectedItem = (el) => {
     const data = el.data()
@@ -229,47 +276,52 @@ export function useGraphExplorer() {
     return { ...data, members, isNode: el.isNode(), isEdge: el.isEdge() }
   }
 
-  const onSelect = async (evt) => {
-    const el = evt.target
+  const showDetail = (el) => {
     const data = el.data()
+    const method = el.isNode() ? 'object' : 'connection'
+    const id = data.originalId || data.id
     const isCluster = data.isCluster || String(data.id).startsWith('edge-cluster')
-    const seq = ++detailSeq
     selectedItem.value = toSelectedItem(el)
-    detail.value = null
-    isDetailLoading.value = !isCluster
-    if (isCluster) return
-    try {
-      const result = await request(el.isNode() ? 'object' : 'connection', { id: data.originalId || data.id })
-      if (seq === detailSeq) detail.value = result
-    } catch (e) {
-      if (seq === detailSeq) errorMsg.value = e.message
-    } finally {
-      if (seq === detailSeq) isDetailLoading.value = false
-    }
+    detailTarget = null
+    detail.value = isCluster ? null : (detailCache.get(`${method}:${id}`) ?? null)
+    isDetailLoading.value = !isCluster && !detail.value
+    if (!isDetailLoading.value) return
+    detailTarget = { method, id }
+    loadDetail()
   }
 
-  const onUnselect = () => {
-    if (cyRef.value?.$(':selected').length) return
-    detailSeq++
-    selectedItem.value = null
+  const onSelectionChange = debounce(() => {
+    const selected = cyRef.value?.$(':selected')
+    if (selected?.length === 1) {
+      showDetail(selected[0])
+      return
+    }
+    detailTarget = null
     detail.value = null
     isDetailLoading.value = false
-  }
+    selectedItem.value = selected?.length ? { isMulti: true, count: selected.length } : null
+  }, 50)
+
+  const { run: runInConsole, runCount } = useMqlConsole()
+
+  watch(runCount, () => detailCache.clear())
 
   const refreshSelectedCluster = () => {
     const el = cyRef.value?.getElementById(selectedItem.value?.id)
     selectedItem.value = el?.length ? toSelectedItem(el) : null
   }
 
+  const clusterAnchor = (clusterKey) => clusterKey?.split('::')[0]
+
   const pinClusterMember = (id) => {
     pinNode(id)
-    doSyncGraph(true, true, false)
+    doSyncGraph({ anchorId: clusterAnchor(selectedItem.value?.clusterKey) })
     refreshSelectedCluster()
   }
 
   const expandCluster = (clusterKey) => {
     toggleCluster(clusterKey)
-    doSyncGraph(true, true, false)
+    doSyncGraph({ anchorId: clusterAnchor(clusterKey) })
     refreshSelectedCluster()
   }
 
@@ -277,18 +329,17 @@ export function useGraphExplorer() {
     const node = evt.target
     if (node.data('isCluster')) {
       toggleCluster(node.data('clusterKey'))
-      doSyncGraph(true, true, false)
+      doSyncGraph({ anchorId: clusterAnchor(node.data('clusterKey')) })
       return
     }
     if (node.outgoers('edge').length > 0 && collapseExpandedFromNode(node)) {
       lastExpandedNodeId.value = null
-      doSyncGraph(true, true, false)
+      doSyncGraph({ anchorId: node.id() })
       return
     }
     expand(node.id(), 'both')
   }
 
-  const { run: runInConsole } = useMqlConsole()
   const queryMethods = { copy: 'copy', run: 'query', insert: 'insert' }
 
   const runQuery = async (method, action, targets) => {
@@ -313,8 +364,8 @@ export function useGraphExplorer() {
     const id = menu.target.id()
     const [prefix, query] = action.split(':')
     if (query) runQuery(queryMethods[prefix], query, menu.targets.map((t) => t.data()))
-    else if (action === 'expand') expand(id, 'from', true)
-    else if (action === 'whereUsed') expand(id, 'to', true)
+    else if (action === 'expand') expand(id, 'from')
+    else if (action === 'whereUsed') expand(id, 'to')
     else if (action === 'expandOptions') expandDialogId.value = id
     else if (action === 'setRoot') loadRoot(id)
     else if (action === 'linkExisting') linkExisting(menu.targets.map((t) => t.id()))
@@ -322,19 +373,24 @@ export function useGraphExplorer() {
     else if (action === 'findPath') showPath(menu.targets.map((t) => t.id()))
   }
 
-  const persist = () =>
-    setState({
-      rawNodes,
-      rawEdges,
-      rootId: rootId.value,
-      searchForm: { ...searchForm },
-      searchResults: searchResults.value,
-      searchLimit: searchLimit.value,
-      isSearchPanelOpen: isSearchPanelOpen.value,
-      hiddenRelations: hiddenRelations.value,
-      rootHistory: rootHistory.value,
-      historyIndex: historyIndex.value,
-    })
+  const persist = debounce(
+    () =>
+      setState({
+        rawNodes,
+        rawEdges,
+        rootId: rootId.value,
+        searchForm: { ...searchForm },
+        searchResults: searchResults.value,
+        searchLimit: searchLimit.value,
+        isSearchPanelOpen: isSearchPanelOpen.value,
+        hiddenRelations: hiddenRelations.value,
+        rootHistory: rootHistory.value,
+        historyIndex: historyIndex.value,
+      }),
+    300,
+  )
+
+  useEventListener(window, 'pagehide', () => persist.flush())
 
   const restore = () => {
     const saved = getState()
@@ -349,11 +405,11 @@ export function useGraphExplorer() {
     hiddenRelations.value = saved.hiddenRelations ?? []
     rootHistory.value = saved.rootHistory ?? []
     historyIndex.value = saved.historyIndex ?? -1
-    doSyncGraph(true, false)
+    doSyncGraph({ animate: false, fit: true })
   }
 
   onMounted(() => {
-    initCytoscape({ onNodeDblTap, onSelect, onUnselect })
+    initCytoscape({ onNodeDblTap, onSelect: onSelectionChange, onUnselect: onSelectionChange })
     restore()
   })
   onBeforeUnmount(destroyCy)
@@ -362,7 +418,7 @@ export function useGraphExplorer() {
     isDark,
     toggleTheme,
     cyContainer,
-    navContainer,
+    minimapCanvas,
     graphFilter,
     hasElements,
     tooltip,

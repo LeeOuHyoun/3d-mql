@@ -5,6 +5,7 @@ const input = ref('')
 const entries = ref([])
 const pending = ref(0)
 const isRunning = computed(() => pending.value > 0)
+const runCount = ref(0)
 let seq = 0
 
 const run = async (command = input.value) => {
@@ -23,6 +24,7 @@ const run = async (command = input.value) => {
   } finally {
     entry.elapsed = Date.now() - startedAt
     pending.value--
+    runCount.value++
   }
 }
 
@@ -32,4 +34,4 @@ const clear = () => {
 
 const openInEditor = (content) => request('openDocument', { content })
 
-export const useMqlConsole = () => ({ isOpen, input, entries, isRunning, run, clear, openInEditor })
+export const useMqlConsole = () => ({ isOpen, input, entries, isRunning, runCount, run, clear, openInEditor })
