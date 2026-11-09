@@ -5,6 +5,7 @@ import { usePanelResize } from '../composables/usePanelResize.js'
 
 const { isOpen, input, entries, isRunning, run, clear, openInEditor } = useMqlConsole()
 const { width: height, onResizeStart } = usePanelResize('console', 220, 'top')
+const { width: inputHeight, onResizeStart: onInputResizeStart } = usePanelResize('console-input', 92, 'top', 48, 400)
 
 const { copy, copied } = useClipboard({ legacy: true })
 const copiedId = ref(0)
@@ -80,13 +81,19 @@ const iconBtnClass =
         >{{ entry.output || (entry.elapsed ? '(결과 없음)' : '실행 중...') }}</pre>
       </div>
     </div>
-    <div class="px-3 py-2 border-t border-gray-200 dark:border-[#3e4451] flex items-end gap-2 shrink-0">
+    <div
+      class="relative px-3 py-2 border-t border-gray-200 dark:border-[#3e4451] flex items-end gap-2 min-h-12"
+      :style="{ height: `${inputHeight}px` }"
+    >
+      <div
+        class="absolute -top-0.5 left-0 right-0 h-1 z-10 cursor-row-resize hover:bg-[#61afef]/40"
+        @pointerdown.prevent="onInputResizeStart"
+      ></div>
       <textarea
         v-model="input"
-        rows="4"
         spellcheck="false"
         placeholder="MQL 명령 입력 (Ctrl+Enter 실행)"
-        class="flex-1 px-2 py-1 font-mono text-xs rounded-md border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#282c34] text-gray-800 dark:text-[#abb2bf] outline-none focus:border-[#61afef] resize-y min-h-10 max-h-60"
+        class="flex-1 self-stretch px-2 py-1 font-mono text-xs rounded-md border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#282c34] text-gray-800 dark:text-[#abb2bf] outline-none focus:border-[#61afef] resize-none"
         @keydown.ctrl.enter.prevent="run()"
       ></textarea>
       <button

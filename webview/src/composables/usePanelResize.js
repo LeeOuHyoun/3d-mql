@@ -1,6 +1,6 @@
 import { clamp } from 'lodash-es'
 
-export function usePanelResize(key, initial, edge) {
+export function usePanelResize(key, initial, edge, min = 200, max = 640) {
   const width = useStorage(`3d-mql-panel-${key}`, initial)
 
   const onResizeStart = (e) => {
@@ -9,7 +9,7 @@ export function usePanelResize(key, initial, edge) {
     const startWidth = width.value
     const sign = edge === 'right' ? 1 : -1
     const stopMove = useEventListener(window, 'pointermove', (ev) => {
-      width.value = clamp(startWidth + sign * (ev[axis] - start), 200, 640)
+      width.value = clamp(startWidth + sign * (ev[axis] - start), min, max)
     })
     useEventListener(window, 'pointerup', stopMove, { once: true })
   }
