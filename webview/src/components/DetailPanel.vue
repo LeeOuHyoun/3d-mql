@@ -1,5 +1,5 @@
 <script setup>
-import { X, Copy, Check, Loader2, Network, CornerRightUp, Crosshair, Pin, Expand } from '@lucide/vue'
+import { X, Copy, Check, Loader2, Network, CornerRightUp, Crosshair, Pin, Expand, LocateFixed } from '@lucide/vue'
 import { request } from '@/api.js'
 import { usePanelResize } from '../composables/usePanelResize.js'
 import { objectIdPattern } from '../composables/useGraphExplorer.js'
@@ -8,10 +8,11 @@ import ContextMenu from './ContextMenu.vue'
 const props = defineProps({
   open: { type: Boolean, default: false },
   item: { type: Object, default: null },
+  selectionCount: { type: Number, default: 0 },
   detail: { type: Object, default: null },
   isLoading: { type: Boolean, default: false },
 })
-const emit = defineEmits(['close', 'expand', 'openRoot', 'pin', 'expandCluster'])
+const emit = defineEmits(['close', 'locate', 'expand', 'openRoot', 'pin', 'expandCluster'])
 
 const { copy, copied } = useClipboard({ legacy: true })
 const copiedKey = ref('')
@@ -101,6 +102,9 @@ const handleValueMenuAction = (action) => {
 
 const { width, onResizeStart } = usePanelResize('detail', 320, 'left')
 
+const headerBtnClass =
+  'p-1 flex shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-transparent border-none rounded hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer'
+
 const actionBtnClass =
   'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-semibold rounded-md border transition-all active:scale-[0.98] cursor-pointer'
 </script>
@@ -118,26 +122,31 @@ const actionBtnClass =
     <div
       class="px-4 py-3 border-b border-gray-200 dark:border-[#3e4451] flex items-center justify-between shrink-0 bg-white dark:bg-[#282c34]"
     >
-      <h3 class="text-sm font-bold text-gray-900 dark:text-[#61afef] m-0 truncate">
+      <h3 class="flex-1 min-w-0 text-sm font-bold text-gray-900 dark:text-[#61afef] m-0 truncate">
         {{ props.item?.isEdge ? 'Edge Properties' : 'Node Properties' }}
       </h3>
-      <button
-        class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-transparent border-none rounded hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-        @click="emit('close')"
+      <span
+        v-if="props.selectionCount > 1"
+        class="shrink-0 mr-1 px-1.5 rounded text-[11px] font-semibold bg-[#ff7a00]/15 text-[#c25e00] dark:text-[#ffa040]"
+        title="선택한 노드를 우클릭하면 일괄 작업 메뉴가 열립니다."
       >
+        {{ props.selectionCount }}개 선택됨
+      </span>
+      <button
+        v-if="props.item"
+        :class="headerBtnClass"
+        title="그래프에서 찾기"
+        @click="emit('locate')"
+      >
+        <LocateFixed :size="14" />
+      </button>
+      <button :class="headerBtnClass" title="닫기" @click="emit('close')">
         <X :size="14" />
       </button>
     </div>
 
     <div v-if="!props.item" class="flex-1 flex items-center justify-center p-4 text-xs text-gray-400 italic">
       노드나 관계를 선택하면 상세 정보가 표시됩니다.
-    </div>
-    <div
-      v-else-if="props.item.isMulti"
-      class="flex-1 flex flex-col items-center justify-center gap-1 p-4 text-xs text-gray-500 dark:text-[#abb2bf]"
-    >
-      <div class="font-semibold">{{ props.item.count }}개 선택됨</div>
-      <div class="text-gray-400">선택한 노드를 우클릭하면 일괄 작업 메뉴가 열립니다.</div>
     </div>
     <template v-else-if="props.item.isCluster">
       <div

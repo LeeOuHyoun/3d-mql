@@ -25,6 +25,7 @@ export function useGraphExplorer() {
     initCytoscape,
     resetView,
     fitView,
+    focusElement,
     findPath,
     layoutType,
     destroyCy,
@@ -54,6 +55,7 @@ export function useGraphExplorer() {
   let rawNodes = {}
   let rawEdges = {}
   const rootId = ref('')
+  const rootItem = shallowRef(null)
   const isLoading = ref(false)
   const relationFilterState = useRelationFilter(cyRef, rootId)
   const { hiddenRelations, resetRelations, refreshRelations } = relationFilterState
@@ -72,6 +74,7 @@ export function useGraphExplorer() {
 
   const doSyncGraph = (layout = {}) => {
     syncGraph(rawNodes, rawEdges, rootId.value, layout)
+    rootItem.value = rawNodes[rootId.value] ?? null
     refreshRelations()
     onSelectionChange()
     persist()
@@ -145,10 +148,7 @@ export function useGraphExplorer() {
     lastExpandedNodeId.value = null
     resetClusters()
     resetRelations()
-    detailTarget = null
-    selectedItem.value = null
-    detail.value = null
-    isDetailLoading.value = false
+    clearDetail()
     doSyncGraph(null)
   }
 
@@ -290,17 +290,36 @@ export function useGraphExplorer() {
     loadDetail()
   }
 
-  const onSelectionChange = debounce(() => {
-    const selected = cyRef.value?.$(':selected')
-    if (selected?.length === 1) {
-      showDetail(selected[0])
-      return
-    }
+  const clearDetail = () => {
     detailTarget = null
+    selectedItem.value = null
     detail.value = null
     isDetailLoading.value = false
-    selectedItem.value = selected?.length ? { isMulti: true, count: selected.length } : null
+  }
+
+  const selectionCount = ref(0)
+  let tappedElement = null
+
+  const onElementTap = (evt) => {
+    tappedElement = evt.target
+  }
+
+  const onSelectionChange = debounce(() => {
+    const cy = cyRef.value
+    if (!cy) return
+    const selected = cy.$(':selected')
+    const tapped = tappedElement
+    tappedElement = null
+    selectionCount.value = selected.length
+    const target = selected.length === 1 ? selected[0] : tapped?.inside() && tapped.selected() ? tapped : null
+    if (target) showDetail(target)
+    else if (selectedItem.value && !cy.getElementById(selectedItem.value.id).length) clearDetail()
   }, 50)
+
+  const locateSelected = () => {
+    if (focusElement(selectedItem.value?.id)) return
+    post({ type: 'notify', text: '관계 필터로 숨겨져 있어 그래프에서 찾을 수 없습니다.' })
+  }
 
   const { run: runInConsole, runCount } = useMqlConsole()
 
@@ -409,7 +428,7 @@ export function useGraphExplorer() {
   }
 
   onMounted(() => {
-    initCytoscape({ onNodeDblTap, onSelect: onSelectionChange, onUnselect: onSelectionChange })
+    initCytoscape({ onNodeDblTap, onElementTap, onSelect: onSelectionChange, onUnselect: onSelectionChange })
     restore()
   })
   onBeforeUnmount(destroyCy)
@@ -442,11 +461,13 @@ export function useGraphExplorer() {
     fitView,
     layoutType,
     selectedItem,
+    selectionCount,
+    locateSelected,
     detail,
     isDetailLoading,
     isDetailPanelOpen,
     onContextAction,
-    rootId,
+    rootItem,
     relationFilterState,
     rootHistory,
     historyIndex,

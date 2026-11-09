@@ -10,7 +10,7 @@ export function useGraphEvents() {
     contextMenu.value = null
   }
 
-  const bindGraphEvents = (cy, container, { onNodeDblTap, onSelect, onUnselect }) => {
+  const bindGraphEvents = (cy, container, { onNodeDblTap, onElementTap, onSelect, onUnselect }) => {
     const containerRect = () => container.value.getBoundingClientRect()
 
     const showNodeTooltip = (node) => {
@@ -20,6 +20,7 @@ export function useGraphEvents() {
     }
 
     cy.on('dbltap', 'node', onNodeDblTap)
+    cy.on('tap', 'node, edge', onElementTap)
     cy.on('select', 'node, edge', onSelect)
     cy.on('unselect', 'node, edge', onUnselect)
     cy.on('mouseover', 'node', (evt) => showNodeTooltip(evt.target))

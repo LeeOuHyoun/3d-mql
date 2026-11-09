@@ -237,6 +237,17 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     if (cyRef.value) animateViewport(fitViewport(cyRef.value.nodes(':visible'), getPositions()))
   }
 
+  const focusElement = (id) => {
+    const cy = cyRef.value
+    const el = cy?.getElementById(id)
+    if (!el?.length || !el.visible()) return false
+    cy.$(':selected').unselect()
+    el.select()
+    const nodes = el.isNode() ? el : el.connectedNodes()
+    animateViewport(fitViewport(nodes, getPositions(), Math.max(cy.zoom(), FIT_MAX_ZOOM)))
+    return true
+  }
+
   const clearPath = () =>
     cyRef.value?.elements('.path-match, .path-dimmed').removeClass('path-match path-dimmed')
 
@@ -303,6 +314,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     initCytoscape,
     resetView,
     fitView,
+    focusElement,
     findPath,
     layoutType,
     destroyCy,

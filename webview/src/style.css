@@ -13,8 +13,16 @@ body,
 body {
   font-family: var(--vscode-font-family, system-ui, sans-serif);
   background: #ffffff;
+  --vscode-editor-background: #ffffff;
+  --vscode-scrollbarSlider-background: rgba(100, 100, 100, 0.4);
+  --vscode-scrollbarSlider-hoverBackground: rgba(100, 100, 100, 0.7);
+  --vscode-scrollbarSlider-activeBackground: rgba(0, 0, 0, 0.6);
 }
 
 .dark body {
   background: #282c34;
+  --vscode-editor-background: #282c34;
+  --vscode-scrollbarSlider-background: rgba(121, 121, 121, 0.4);
+  --vscode-scrollbarSlider-hoverBackground: rgba(100, 100, 100, 0.7);
+  --vscode-scrollbarSlider-activeBackground: rgba(191, 191, 191, 0.4);
 }

@@ -83,10 +83,10 @@ const iconBtnClass =
     <div class="px-3 py-2 border-t border-gray-200 dark:border-[#3e4451] flex items-end gap-2 shrink-0">
       <textarea
         v-model="input"
-        rows="2"
+        rows="4"
         spellcheck="false"
         placeholder="MQL 명령 입력 (Ctrl+Enter 실행)"
-        class="flex-1 px-2 py-1 font-mono text-xs rounded-md border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#282c34] text-gray-800 dark:text-[#abb2bf] outline-none focus:border-[#61afef] resize-none"
+        class="flex-1 px-2 py-1 font-mono text-xs rounded-md border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#282c34] text-gray-800 dark:text-[#abb2bf] outline-none focus:border-[#61afef] resize-y min-h-10 max-h-60"
         @keydown.ctrl.enter.prevent="run()"
       ></textarea>
       <button

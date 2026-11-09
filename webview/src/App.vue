@@ -55,11 +55,13 @@ const {
   fitView,
   layoutType,
   selectedItem,
+  selectionCount,
+  locateSelected,
   detail,
   isDetailLoading,
   isDetailPanelOpen,
   onContextAction,
-  rootId,
+  rootItem,
   relationFilterState,
   rootHistory,
   historyIndex,
@@ -192,7 +194,7 @@ const contextMenuItems = computed(() => {
         :open="isSearchPanelOpen"
         :results="searchResults"
         :limit="searchLimit"
-        :rootId="rootId"
+        :root="rootItem"
         @select="loadRoot"
         @close="isSearchPanelOpen = false"
       />
@@ -227,9 +229,11 @@ const contextMenuItems = computed(() => {
       <DetailPanel
         :open="isDetailPanelOpen"
         :item="selectedItem"
+        :selectionCount="selectionCount"
         :detail="detail"
         :isLoading="isDetailLoading"
         @close="isDetailPanelOpen = false"
+        @locate="locateSelected"
         @expand="expand"
         @openRoot="loadRoot"
         @pin="pinClusterMember"

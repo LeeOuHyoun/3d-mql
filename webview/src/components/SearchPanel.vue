@@ -1,5 +1,5 @@
 <script setup>
-import { X, Copy } from '@lucide/vue'
+import { X, Copy, Crosshair } from '@lucide/vue'
 import ContextMenu from './ContextMenu.vue'
 import { usePanelResize } from '../composables/usePanelResize.js'
 
@@ -7,11 +7,12 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   results: { type: Array, default: () => [] },
   limit: { type: Number, default: 0 },
-  rootId: { type: String, default: '' },
+  root: { type: Object, default: null },
 })
 const emit = defineEmits(['select', 'close'])
 
 const isLimited = computed(() => props.limit > 0 && props.results.length >= props.limit)
+const rootMarkClass = 'bg-[#e06c75]/10 shadow-[inset_4px_0_0_#e06c75]'
 
 const { width, onResizeStart } = usePanelResize('search', 288, 'right')
 
@@ -60,6 +61,20 @@ const handleMenuAction = (action) => {
       </button>
     </div>
     <div
+      v-if="props.root"
+      :class="['px-4 py-2 border-b border-gray-200 dark:border-[#3e4451] shrink-0 flex items-start gap-2', rootMarkClass]"
+      :title="props.root.id"
+    >
+      <Crosshair :size="14" class="mt-0.5 shrink-0 text-[#e06c75]" />
+      <div class="min-w-0 flex flex-col gap-0.5">
+        <span class="text-[10px] font-semibold text-[#e06c75]">현재 기준 객체</span>
+        <span class="text-xs font-semibold text-gray-800 dark:text-[#abb2bf] break-all">
+          {{ props.root.name }} <span class="text-gray-400">{{ props.root.revision }}</span>
+        </span>
+        <span class="text-[11px] text-gray-500 dark:text-[#5c6370] truncate">{{ props.root.type }}</span>
+      </div>
+    </div>
+    <div
       v-if="isLimited"
       class="px-4 py-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-b border-gray-200 dark:border-[#3e4451] shrink-0"
     >
@@ -70,8 +85,8 @@ const handleMenuAction = (action) => {
       <button
         v-for="item in props.results"
         :key="item.id"
-        class="w-full text-left px-4 py-2 border-b border-gray-100 dark:border-[#3e4451] bg-transparent hover:bg-[#61afef]/10 cursor-pointer flex flex-col gap-0.5"
-        :class="item.id === props.rootId && 'bg-[#61afef]/15'"
+        class="w-full text-left px-4 py-2 border-b border-gray-100 dark:border-[#3e4451] cursor-pointer flex flex-col gap-0.5"
+        :class="item.id === props.root?.id ? rootMarkClass : 'bg-transparent hover:bg-[#61afef]/10'"
         :title="item.id"
         @click="emit('select', item.id)"
         @contextmenu.prevent="openMenu($event, item)"
