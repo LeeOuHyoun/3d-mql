@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
+import { buildJavaText, constantsClass, isJavaAction, parseConstants, type JavaTarget } from './javaSnippets';
 import { MqlClient, type ClientStatus } from './mqlClient';
 import {
   attributeInfo,
@@ -148,7 +149,7 @@ export class GraphPanel {
     if (method === 'openKeybindings') {
       return Promise.resolve(vscode.commands.executeCommand('workbench.action.openGlobalKeybindings', graphCommandPrefix));
     }
-    if (queryMethods.includes(method)) return this.query(method, String(params.action), params.targets as QueryTarget[]);
+    if (queryMethods.includes(method)) return this.query(method, String(params.action), params.targets as unknown[]);
     return Promise.reject(new Error(`알 수 없는 요청입니다: ${method}`));
   }
 
@@ -157,14 +158,23 @@ export class GraphPanel {
     return this.client.run(command);
   }
 
-  private async query(method: string, action: string, targets: QueryTarget[]) {
-    const text = buildQueryText(action, targets);
+  private async query(method: string, action: string, targets: unknown[]) {
+    const text = isJavaAction(action)
+      ? await buildJavaText(this.client, action, targets as JavaTarget[], await this.javaConstants())
+      : buildQueryText(action, targets as QueryTarget[]);
     if (method === 'copy') {
       await vscode.env.clipboard.writeText(text);
       this.notify(`클립보드에 복사했습니다: ${text.split('\n')[0].slice(0, 80)}`);
     }
     if (method === 'insert') await this.insert(text);
     return text;
+  }
+
+  private async javaConstants() {
+    const [file] = await vscode.workspace.findFiles(`**/${constantsClass}.java`, '**/node_modules/**', 1);
+    if (!file) return undefined;
+    const document = await vscode.workspace.openTextDocument(file);
+    return parseConstants(document.getText(), constantsClass);
   }
 
   private async insert(text: string) {

@@ -23,6 +23,7 @@ import {
   PackagePlus,
   Trash2,
   Undo2,
+  FileCode,
 } from '@lucide/vue'
 import { onMessage } from './api.js'
 import { useGraphExplorer } from './composables/useGraphExplorer.js'
@@ -101,6 +102,7 @@ const {
   goForward,
   expandDialogId,
   submitExpandOptions,
+  copyExpandJava,
   compareItems,
   pinClusterMember,
   expandCluster,
@@ -207,6 +209,14 @@ const queryExtras = (action) => [
 const copyItem = (action, label) => ({ action: `copy:${action}`, label, icon: Copy, color: copyColor })
 const queryItem = (action, label) => ({ ...copyItem(action, label), icon: Terminal, extras: queryExtras(action) })
 const copyGroup = (label, children) => ({ action: 'copy', label, icon: Copy, color: copyColor, children })
+const javaColor = 'text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/40'
+const javaItem = (action, label) => ({
+  ...copyItem(action, label),
+  icon: FileCode,
+  color: javaColor,
+  extras: [{ action: `insert:${action}`, icon: TextCursorInput, title: '에디터에 삽입' }],
+})
+const javaGroup = (children) => ({ action: 'java', label: 'Java 코드 복사', icon: FileCode, color: javaColor, children })
 const linkExistingItem = (label) => ({ action: 'linkExisting', label, icon: Link2, color: violetColor })
 const busQueryItems = [
   queryItem('printBus', 'print bus'),
@@ -223,6 +233,7 @@ const pathGroup = (label) => ({
     copyItem('pathExpr', 'select 식'),
     copyItem('pathColumn', '컬럼 식 $<…>'),
     copyItem('pathWhere', 'where 조건'),
+    javaItem('pathJava', 'Java 코드 (getInfoList)'),
   ],
 })
 const impactGroup = {
@@ -250,6 +261,7 @@ const graphMenuItems = {
     impactGroup,
     { action: 'trace', label: '웹 화면 추적...', icon: AppWindow, color: violetColor },
     pathGroup('기준 객체에서 여기까지의 select 식'),
+    javaGroup([javaItem('javaObject', '이 객체 값 읽기 (getInfo)')]),
     copyGroup('Copy', [
       copyItem('id', 'Object ID'),
       copyItem('tnr', 'Type Name Rev'),
@@ -263,10 +275,18 @@ const graphMenuItems = {
     queryItem('printConnection', 'print connection'),
     queryItem('expandRel', 'expand bus (from, rel type)'),
     queryItem('queryConnection', 'query connection'),
+    javaGroup([
+      javaItem('javaChildren', 'from 객체에서 to 쪽 찾기 (getRelatedObjects)'),
+      javaItem('javaParents', 'to 객체에서 from 쪽 찾기 (getRelatedObjects)'),
+    ]),
     { action: 'edit', label: '관계 속성 편집...', icon: Pencil, color: violetColor },
     { action: 'disconnect', label: '연결 해제 문장 만들기', icon: Unlink, color: redColor },
   ],
-  cluster: [copyItem('memberIds', 'Copy Member IDs'), queryItem('expandCluster', 'expand bus (rel type)')],
+  cluster: [
+    copyItem('memberIds', 'Copy Member IDs'),
+    queryItem('expandCluster', 'expand bus (rel type)'),
+    javaItem('javaCluster', 'Java 코드 복사 (getRelatedObjects)'),
+  ],
   pendingNode: [{ action: 'editPending', label: '생성 문장 고치기...', icon: Pencil, color: violetColor }, removePendingItem],
   pendingEdge: [removePendingItem],
 }
@@ -492,6 +512,7 @@ const contextMenuItems = computed(() => {
         v-if="expandDialogId"
         :label="expandDialogId"
         @submit="submitExpandOptions"
+        @copyJava="copyExpandJava"
         @close="expandDialogId = ''"
       />
     </Transition>

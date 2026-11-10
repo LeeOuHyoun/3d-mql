@@ -257,13 +257,15 @@ export async function expandObject(client: MqlClient, id: string, direction: Dir
   return { nodes: results.flatMap((item) => item.nodes), edges: results.flatMap((item) => item.edges) };
 }
 
-async function expandDirection(client: MqlClient, id: string, direction: 'from' | 'to', options: ExpandOptions) {
+export function expandStatement(id: string, direction: 'from' | 'to', options: ExpandOptions = {}) {
   const limit = Number(options.limit) > 0 ? ` limit ${Math.floor(Number(options.limit))}` : '';
   const busSelect = `select bus type id current${whereClause(options.busWhere)}`;
   const relSelect = `select rel type id${whereClause(options.relWhere)}`;
-  const text = await client.run(
-    `${expandCommand(id, direction, options)} ${busSelect} ${relSelect} dump ${quote(separator)}${limit}`,
-  );
+  return `${expandCommand(id, direction, options)} ${busSelect} ${relSelect} dump ${quote(separator)}${limit}`;
+}
+
+async function expandDirection(client: MqlClient, id: string, direction: 'from' | 'to', options: ExpandOptions) {
+  const text = await client.run(expandStatement(id, direction, options));
   const isEnd = options.recurse === 'end';
   const nodes: ObjectSummary[] = [];
   const edges: GraphEdge[] = [];
@@ -604,9 +606,12 @@ export async function policyStates(client: MqlClient, name: string) {
   return selectValues(await client.run(`print policy ${quote(name)} select state`), 'state');
 }
 
+export async function relationshipAttributeNames(client: MqlClient, name: string) {
+  return selectValues(await client.run(`print relationship ${quote(name)} select attribute`), 'attribute');
+}
+
 export async function relationshipAttributes(client: MqlClient, name: string) {
-  const text = await client.run(`print relationship ${quote(name)} select attribute`);
-  return attributeInfo(client, selectValues(text, 'attribute'));
+  return attributeInfo(client, await relationshipAttributeNames(client, name));
 }
 
 export async function listNames(client: MqlClient, kind: string) {
@@ -712,6 +717,12 @@ const bySymbolicOf = (client: MqlClient) =>
   symbolicNames(client).then(
     ({ bySymbolic }) => bySymbolic,
     (): Record<string, string> => ({}),
+  );
+
+export const symbolicsByName = (client: MqlClient) =>
+  symbolicNames(client).then(
+    ({ byName }) => byName,
+    () => undefined,
   );
 
 async function actualType(client: MqlClient, value: string) {

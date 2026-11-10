@@ -14,8 +14,9 @@ import {
   Pencil,
   Unlink,
   Undo2,
+  FileCode,
 } from '@lucide/vue'
-import { cachedRequest, request } from '@/api.js'
+import { cachedRequest, post, request } from '@/api.js'
 import { usePanelResize } from '../composables/usePanelResize.js'
 import { objectIdPattern } from '../composables/useGraphExplorer.js'
 import ContextMenu from './ContextMenu.vue'
@@ -173,6 +174,7 @@ const menuColors = {
   amber: 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/40',
   sky: 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/40',
   violet: 'text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/40',
+  orange: 'text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/40',
 }
 const valueMenu = shallowRef(null)
 
@@ -208,8 +210,20 @@ const valueMenuItems = computed(() => {
         color: menuColors.sky,
       },
     canModify && { action: 'modify', label: '값 수정 문장 만들기…', icon: Pencil, color: menuColors.violet },
+    ...(menu.section === 'Attributes' && isEditable.value
+      ? [
+          { action: 'javaGet', label: 'Java: 속성 읽기 코드 복사', icon: FileCode, color: menuColors.orange },
+          { action: 'javaSet', label: 'Java: 속성 쓰기 코드 복사', icon: FileCode, color: menuColors.orange },
+        ]
+      : []),
   ].filter(Boolean)
 })
+
+const copyAttributeJava = (action, { field }) =>
+  request('copy', {
+    action,
+    targets: [{ id: itemId.value, isEdge: !!props.item.isEdge, attribute: field.key, value: field.value }],
+  }).catch((e) => post({ type: 'notify', text: e.message }))
 
 const whereOf = ({ section, field }) => {
   const mark = field.value.includes("'") ? '"' : "'"
@@ -223,6 +237,8 @@ const valueActions = {
   symbolic: (menu) => copy(menu.symbolic),
   where: (menu) => emit('where', { expression: whereOf(menu), type: props.item.type }),
   modify: (menu) => emit('edit', { key: menu.field.key, isAttribute: menu.section === 'Attributes' }),
+  javaGet: (menu) => copyAttributeJava('javaAttributeGet', menu),
+  javaSet: (menu) => copyAttributeJava('javaAttributeSet', menu),
 }
 
 const handleValueMenuAction = (action) => {

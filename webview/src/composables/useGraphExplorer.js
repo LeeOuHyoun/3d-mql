@@ -265,6 +265,8 @@ export function useGraphExplorer() {
     expand(id, options.direction, options)
   }
 
+  const copyExpandJava = (options) => runQuery('copy', 'javaExpand', [{ ...options, id: expandDialogId.value }])
+
   const linkExisting = async (ids) => {
     isLoading.value = true
     errorMsg.value = ''
@@ -866,7 +868,11 @@ export function useGraphExplorer() {
     }
   }
 
-  const targetData = (el) => ({ ...el.data(), id: el.data('originalId') || el.id() })
+  const targetData = (el) => ({
+    ...el.data(),
+    id: el.data('originalId') || el.id(),
+    ...(el.isEdge() && { fromType: el.source().data('type'), toType: el.target().data('type') }),
+  })
 
   const pathTargets = (menu) => {
     const pathTo = menu.target.id()
@@ -1052,6 +1058,7 @@ export function useGraphExplorer() {
     goForward,
     expandDialogId,
     submitExpandOptions,
+    copyExpandJava,
     compareItems,
     pinClusterMember,
     expandCluster,
