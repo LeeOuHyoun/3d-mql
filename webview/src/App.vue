@@ -97,7 +97,11 @@ const toggleConsoleFullscreen = () => {
 }
 
 onKeyStroke('Escape', () => (fullscreenPane.value = ''))
-whenever(() => !isConsoleOpen.value, () => (isConsoleFullscreen.value = false))
+whenever(
+  () => !isConsoleOpen.value,
+  () => (isConsoleFullscreen.value = false),
+  { flush: 'post' },
+)
 
 const shortcuts = {
   clear: clearGraph,
@@ -198,19 +202,21 @@ const contextMenuItems = computed(() => {
       @forward="goForward"
       @go="goHistory"
     />
-    <div
-      v-if="errorMsg"
-      class="absolute top-14 left-4 right-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs rounded-xl z-50 shadow-xl backdrop-blur-md flex items-center gap-2"
-    >
-      <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0"></div>
-      <span class="flex-1 whitespace-pre-wrap break-all"><span class="font-semibold">Error:</span> {{ errorMsg }}</span>
-      <button
-        class="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg flex items-center justify-center bg-transparent border-none text-inherit cursor-pointer"
-        @click="errorMsg = ''"
+    <Transition name="pop">
+      <div
+        v-if="errorMsg"
+        class="absolute top-14 left-4 right-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs rounded-xl z-50 shadow-xl backdrop-blur-md flex items-center gap-2"
       >
-        <X :size="16" />
-      </button>
-    </div>
+        <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0"></div>
+        <span class="flex-1 whitespace-pre-wrap break-all"><span class="font-semibold">Error:</span> {{ errorMsg }}</span>
+        <button
+          class="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg flex items-center justify-center bg-transparent border-none text-inherit cursor-pointer"
+          @click="errorMsg = ''"
+        >
+          <X :size="16" />
+        </button>
+      </div>
+    </Transition>
     <div class="flex-1 min-h-0 relative flex flex-row">
       <SearchPanel
         :open="isSearchPanelOpen"
@@ -220,9 +226,11 @@ const contextMenuItems = computed(() => {
         @select="loadRoot"
         @close="isSearchPanelOpen = false"
       />
-      <RelationPanel v-if="isRelationPanelOpen" :state="relationFilterState" @close="isRelationPanelOpen = false" />
+      <Transition name="dock-left">
+        <RelationPanel v-if="isRelationPanelOpen" :state="relationFilterState" @close="isRelationPanelOpen = false" />
+      </Transition>
       <div class="flex-1 h-full min-w-0 flex flex-col">
-        <div :class="isGraphFullscreen ? 'fixed inset-0 z-40' : 'flex-1 min-h-0 relative'">
+        <div :class="isGraphFullscreen ? 'fixed inset-0 z-40 animate-zoom-in' : 'flex-1 min-h-0 relative'">
           <div
             ref="cyContainer"
             class="w-full h-full outline-none select-none overflow-hidden bg-white dark:bg-[#282c34]"
@@ -237,13 +245,15 @@ const contextMenuItems = computed(() => {
             <Minimize2 v-if="isGraphFullscreen" :size="14" />
             <Maximize2 v-else :size="14" />
           </button>
-          <div
-            v-if="isMinimapOpen && hasElements"
-            class="absolute bottom-2 right-2 z-10 w-60 h-44 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90"
-            @mouseenter="hideTooltip"
-          >
-            <canvas ref="minimapCanvas" class="block w-full h-full cursor-pointer"></canvas>
-          </div>
+          <Transition name="fade">
+            <div
+              v-if="isMinimapOpen && hasElements"
+              class="absolute bottom-2 right-2 z-10 w-60 h-44 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90"
+              @mouseenter="hideTooltip"
+            >
+              <canvas ref="minimapCanvas" class="block w-full h-full cursor-pointer"></canvas>
+            </div>
+          </Transition>
           <div
             v-if="!hasElements"
             class="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none text-gray-400 dark:text-[#5c6370] text-xs"
@@ -255,7 +265,9 @@ const contextMenuItems = computed(() => {
             <div>Ctrl/Shift+클릭 · Shift+드래그: 다중 선택</div>
           </div>
         </div>
-        <MqlConsole v-if="isConsoleOpen" v-model:fullscreen="isConsoleFullscreen" />
+        <Transition :name="isConsoleFullscreen ? 'fade' : 'dock-bottom'">
+          <MqlConsole v-if="isConsoleOpen" v-model:fullscreen="isConsoleFullscreen" />
+        </Transition>
       </div>
       <DetailPanel
         :open="isDetailPanelOpen"
@@ -279,12 +291,16 @@ const contextMenuItems = computed(() => {
       @action="onContextAction"
       @close="hideContextMenu"
     />
-    <ExpandDialog
-      v-if="expandDialogId"
-      :label="expandDialogId"
-      @submit="submitExpandOptions"
-      @close="expandDialogId = ''"
-    />
-    <CompareDialog v-if="compareItems.length === 2" :items="compareItems" @close="compareItems = []" />
+    <Transition name="dialog">
+      <ExpandDialog
+        v-if="expandDialogId"
+        :label="expandDialogId"
+        @submit="submitExpandOptions"
+        @close="expandDialogId = ''"
+      />
+    </Transition>
+    <Transition name="dialog">
+      <CompareDialog v-if="compareItems.length === 2" :items="compareItems" @close="compareItems = []" />
+    </Transition>
   </div>
 </template>

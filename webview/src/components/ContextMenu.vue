@@ -42,7 +42,7 @@ const panelClass =
 <template>
   <div
     ref="menuRef"
-    :class="['fixed z-50 ml-1', panelClass]"
+    :class="['fixed z-50 ml-1 origin-top-left animate-pop-in', panelClass]"
     :style="{ left: `${left}px`, top: `${top}px` }"
     @contextmenu.prevent
   >
@@ -50,7 +50,11 @@ const panelClass =
       <ContextMenuItem :item="item" @select="handleSelect" @action="emitAction" />
       <div
         v-if="item.children && openKey === item.action"
-        :class="['absolute -top-1', isSubmenuFlipped ? 'right-full mr-1' : 'left-full ml-1', panelClass]"
+        :class="[
+          'absolute -top-1 animate-pop-in',
+          isSubmenuFlipped ? 'right-full mr-1 origin-top-right' : 'left-full ml-1 origin-top-left',
+          panelClass,
+        ]"
       >
         <ContextMenuItem
           v-for="child in item.children"

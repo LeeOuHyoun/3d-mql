@@ -43,7 +43,7 @@ const rowClass = 'px-4 py-1 flex items-center gap-2 text-xs hover:bg-[#61afef]/1
 <template>
   <div
     class="relative h-full border-r border-gray-200 dark:border-[#3e4451] bg-gray-50 dark:bg-[#21252b] flex flex-col shrink-0 overflow-hidden"
-    :style="{ width: `${width}px` }"
+    :style="{ width: `${width}px`, '--panel-size': `${width}px` }"
   >
     <div
       class="absolute top-0 right-0 bottom-0 w-1 z-10 cursor-col-resize hover:bg-[#61afef]/40"

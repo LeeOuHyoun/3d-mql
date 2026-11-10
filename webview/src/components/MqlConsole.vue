@@ -30,8 +30,10 @@ const iconBtnClass =
 <template>
   <div
     class="bg-gray-50 dark:bg-[#21252b] flex flex-col"
-    :class="fullscreen ? 'fixed inset-0 z-40' : 'relative shrink-0 border-t border-gray-200 dark:border-[#3e4451]'"
-    :style="fullscreen ? undefined : { height: `${height}px` }"
+    :class="
+      fullscreen ? 'fixed inset-0 z-40 animate-zoom-in' : 'relative shrink-0 border-t border-gray-200 dark:border-[#3e4451]'
+    "
+    :style="fullscreen ? undefined : { height: `${height}px`, '--panel-size': `${height}px` }"
   >
     <div
       v-if="!fullscreen"

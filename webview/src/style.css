@@ -1,6 +1,93 @@
 @import 'tailwindcss';
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --animate-pop-in: pop-in 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animate-zoom-in: pop-in 0.2s ease-out;
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      scale: 0.96;
+    }
+  }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.pop-enter-active {
+  transition:
+    opacity 0.15s ease-out,
+    scale 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.pop-leave-active {
+  transition:
+    opacity 0.1s ease-in,
+    scale 0.1s ease-in;
+}
+
+.pop-enter-from,
+.pop-leave-to {
+  opacity: 0;
+  scale: 0.96;
+}
+
+.dialog-enter-active,
+.dialog-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.dialog-enter-active > div {
+  transition: scale 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.dialog-leave-active > div {
+  transition: scale 0.15s ease-in;
+}
+
+.dialog-enter-from,
+.dialog-leave-to {
+  opacity: 0;
+}
+
+.dialog-enter-from > div,
+.dialog-leave-to > div {
+  scale: 0.95;
+}
+
+.dock-left-enter-active,
+.dock-left-leave-active,
+.dock-right-enter-active,
+.dock-right-leave-active,
+.dock-bottom-enter-active,
+.dock-bottom-leave-active {
+  transition: margin 0.18s ease-out;
+}
+
+.dock-left-enter-from,
+.dock-left-leave-to {
+  margin-left: calc(-1 * var(--panel-size));
+}
+
+.dock-right-enter-from,
+.dock-right-leave-to {
+  margin-right: calc(-1 * var(--panel-size));
+}
+
+.dock-bottom-enter-from,
+.dock-bottom-leave-to {
+  margin-bottom: calc(-1 * var(--panel-size));
+}
+
 html,
 body,
 #app {

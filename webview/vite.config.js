@@ -18,6 +18,7 @@ export default defineConfig({
     emptyOutDir: true,
     modulePreload: false,
     cssCodeSplit: false,
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       input: resolve(root, 'src/main.js'),
       output: {

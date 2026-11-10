@@ -15,7 +15,7 @@ const rows = computed(() => {
 
 <template>
   <div
-    class="fixed z-50 pointer-events-none -translate-x-1/2 -translate-y-full -mt-2 font-sans text-xs px-3 py-2 rounded-lg border min-w-40 max-w-72 shadow-xl bg-white dark:bg-[#282c34] text-[#2c3e50] dark:text-[#abb2bf] border-gray-200 dark:border-[#3e4451]"
+    class="fixed z-50 pointer-events-none origin-bottom animate-pop-in -translate-x-1/2 -translate-y-full -mt-2 font-sans text-xs px-3 py-2 rounded-lg border min-w-40 max-w-72 shadow-xl bg-white dark:bg-[#282c34] text-[#2c3e50] dark:text-[#abb2bf] border-gray-200 dark:border-[#3e4451]"
     :style="{ left: `${props.tooltip.x}px`, top: `${props.tooltip.y}px` }"
   >
     <div class="font-bold text-[13px] mb-1.5 break-all text-[#4b8bca] dark:text-[#61afef]">

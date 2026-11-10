@@ -37,74 +37,76 @@ const handleMenuAction = (action) => {
 </script>
 
 <template>
-  <div
-    v-if="props.open"
-    class="relative h-full border-r border-gray-200 dark:border-[#3e4451] bg-gray-50 dark:bg-[#21252b] flex flex-col shrink-0 overflow-hidden"
-    :style="{ width: `${width}px` }"
-    @contextmenu.prevent
-  >
+  <Transition name="dock-left">
     <div
-      class="absolute top-0 right-0 bottom-0 w-1 z-10 cursor-col-resize hover:bg-[#61afef]/40"
-      @pointerdown.prevent="onResizeStart"
-    ></div>
-    <div
-      class="px-4 py-3 border-b border-gray-200 dark:border-[#3e4451] flex items-center justify-between shrink-0 bg-white dark:bg-[#282c34]"
+      v-if="props.open"
+      class="relative z-1 h-full border-r border-gray-200 dark:border-[#3e4451] bg-gray-50 dark:bg-[#21252b] flex flex-col shrink-0 overflow-hidden"
+      :style="{ width: `${width}px`, '--panel-size': `${width}px` }"
+      @contextmenu.prevent
     >
-      <h3 class="text-sm font-bold text-gray-900 dark:text-[#61afef] m-0">
-        검색 결과 ({{ props.results.length }}{{ isLimited ? '+' : '' }})
-      </h3>
-      <button
-        class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-transparent border-none rounded hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
-        @click="emit('close')"
+      <div
+        class="absolute top-0 right-0 bottom-0 w-1 z-10 cursor-col-resize hover:bg-[#61afef]/40"
+        @pointerdown.prevent="onResizeStart"
+      ></div>
+      <div
+        class="px-4 py-3 border-b border-gray-200 dark:border-[#3e4451] flex items-center justify-between shrink-0 bg-white dark:bg-[#282c34]"
       >
-        <X :size="14" />
-      </button>
-    </div>
-    <div
-      v-if="props.root"
-      :class="['px-4 py-2 border-b border-gray-200 dark:border-[#3e4451] shrink-0 flex items-start gap-2', rootMarkClass]"
-      :title="props.root.id"
-    >
-      <Crosshair :size="14" class="mt-0.5 shrink-0 text-[#e06c75]" />
-      <div class="min-w-0 flex flex-col gap-0.5">
-        <span class="text-[10px] font-semibold text-[#e06c75]">현재 기준 객체</span>
-        <span class="text-xs font-semibold text-gray-800 dark:text-[#abb2bf] break-all">
-          {{ props.root.name }} <span class="text-gray-400">{{ props.root.revision }}</span>
-        </span>
-        <span class="text-[11px] text-gray-500 dark:text-[#5c6370] truncate">{{ props.root.type }}</span>
+        <h3 class="text-sm font-bold text-gray-900 dark:text-[#61afef] m-0">
+          검색 결과 ({{ props.results.length }}{{ isLimited ? '+' : '' }})
+        </h3>
+        <button
+          class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 bg-transparent border-none rounded hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+          @click="emit('close')"
+        >
+          <X :size="14" />
+        </button>
       </div>
-    </div>
-    <div
-      v-if="isLimited"
-      class="px-4 py-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-b border-gray-200 dark:border-[#3e4451] shrink-0"
-    >
-      최대 {{ props.limit }}건까지만 표시합니다. 조건을 좁혀 다시 검색하세요.
-    </div>
-    <div class="flex-1 overflow-auto">
-      <div v-if="!props.results.length" class="p-4 text-xs text-gray-400 italic text-center">결과가 없습니다.</div>
-      <button
-        v-for="item in props.results"
-        :key="item.id"
-        class="w-full text-left px-4 py-2 border-b border-gray-100 dark:border-[#3e4451] cursor-pointer flex flex-col gap-0.5"
-        :class="item.id === props.root?.id ? rootMarkClass : 'bg-transparent hover:bg-[#61afef]/10'"
-        :title="item.id"
-        @click="emit('select', item.id)"
-        @contextmenu.prevent="openMenu($event, item)"
+      <div
+        v-if="props.root"
+        :class="['px-4 py-2 border-b border-gray-200 dark:border-[#3e4451] shrink-0 flex items-start gap-2', rootMarkClass]"
+        :title="props.root.id"
       >
-        <span class="text-xs font-semibold text-gray-800 dark:text-[#abb2bf] break-all">
-          {{ item.name }} <span class="text-gray-400">{{ item.revision }}</span>
-        </span>
-        <span class="flex items-center gap-2 text-[11px] text-gray-500 dark:text-[#5c6370]">
-          <span class="truncate">{{ item.type }}</span>
-          <span
-            v-if="item.current"
-            class="shrink-0 px-1.5 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
-          >
-            {{ item.current }}
+        <Crosshair :size="14" class="mt-0.5 shrink-0 text-[#e06c75]" />
+        <div class="min-w-0 flex flex-col gap-0.5">
+          <span class="text-[10px] font-semibold text-[#e06c75]">현재 기준 객체</span>
+          <span class="text-xs font-semibold text-gray-800 dark:text-[#abb2bf] break-all">
+            {{ props.root.name }} <span class="text-gray-400">{{ props.root.revision }}</span>
           </span>
-        </span>
-      </button>
+          <span class="text-[11px] text-gray-500 dark:text-[#5c6370] truncate">{{ props.root.type }}</span>
+        </div>
+      </div>
+      <div
+        v-if="isLimited"
+        class="px-4 py-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-b border-gray-200 dark:border-[#3e4451] shrink-0"
+      >
+        최대 {{ props.limit }}건까지만 표시합니다. 조건을 좁혀 다시 검색하세요.
+      </div>
+      <div class="flex-1 overflow-auto">
+        <div v-if="!props.results.length" class="p-4 text-xs text-gray-400 italic text-center">결과가 없습니다.</div>
+        <button
+          v-for="item in props.results"
+          :key="item.id"
+          class="w-full text-left px-4 py-2 border-b border-gray-100 dark:border-[#3e4451] cursor-pointer flex flex-col gap-0.5"
+          :class="item.id === props.root?.id ? rootMarkClass : 'bg-transparent hover:bg-[#61afef]/10'"
+          :title="item.id"
+          @click="emit('select', item.id)"
+          @contextmenu.prevent="openMenu($event, item)"
+        >
+          <span class="text-xs font-semibold text-gray-800 dark:text-[#abb2bf] break-all">
+            {{ item.name }} <span class="text-gray-400">{{ item.revision }}</span>
+          </span>
+          <span class="flex items-center gap-2 text-[11px] text-gray-500 dark:text-[#5c6370]">
+            <span class="truncate">{{ item.type }}</span>
+            <span
+              v-if="item.current"
+              class="shrink-0 px-1.5 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
+            >
+              {{ item.current }}
+            </span>
+          </span>
+        </button>
+      </div>
+      <ContextMenu v-if="menu" :menu="menu" :items="menuItems" @action="handleMenuAction" @close="menu = null" />
     </div>
-    <ContextMenu v-if="menu" :menu="menu" :items="menuItems" @action="handleMenuAction" @close="menu = null" />
-  </div>
+  </Transition>
 </template>
