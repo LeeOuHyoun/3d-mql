@@ -30,7 +30,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   let activeLayout = null
   let wheelHandler = null
   const { tooltip, contextMenu, bindGraphEvents, hideTooltip, hideContextMenu } = useGraphEvents()
-  const { minimapCanvas, scheduleMinimap } = useMinimap(cyRef, isDark)
+  const { minimapCanvas, scheduleMinimap } = useMinimap(cyRef, isDark, () => fitView())
 
   const stopLayout = () => {
     activeLayout?.stop()

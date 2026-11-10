@@ -2,7 +2,7 @@
   "name": "3d-mql",
   "displayName": "3D MQL Graph",
   "description": "ENOVIA MQL로 객체와 관계를 그래프로 탐색합니다.",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -62,6 +62,10 @@
       {
         "command": "3d-mql.graph.consoleFullscreen",
         "title": "3D MQL: MQL 콘솔 전체 화면 전환"
+      },
+      {
+        "command": "3d-mql.graph.shortcuts",
+        "title": "3D MQL: 단축키 안내"
       }
     ],
     "menus": {
@@ -105,6 +109,10 @@
         {
           "command": "3d-mql.graph.consoleFullscreen",
           "when": "activeWebviewPanelId == '3d-mql.graph'"
+        },
+        {
+          "command": "3d-mql.graph.shortcuts",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
         }
       ]
     },
@@ -120,6 +128,11 @@
         "when": "activeWebviewPanelId == '3d-mql.graph'"
       },
       {
+        "command": "3d-mql.graph.console",
+        "key": "alt+c",
+        "when": "activeWebviewPanelId == '3d-mql.graph'"
+      },
+      {
         "command": "3d-mql.graph.graphFullscreen",
         "key": "ctrl+alt+g",
         "when": "activeWebviewPanelId == '3d-mql.graph'"
@@ -127,6 +140,11 @@
       {
         "command": "3d-mql.graph.consoleFullscreen",
         "key": "ctrl+alt+c",
+        "when": "activeWebviewPanelId == '3d-mql.graph'"
+      },
+      {
+        "command": "3d-mql.graph.shortcuts",
+        "key": "ctrl+shift+l",
         "when": "activeWebviewPanelId == '3d-mql.graph'"
       }
     ],

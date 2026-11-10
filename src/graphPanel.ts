@@ -21,7 +21,14 @@ type Message =
   | { type: 'notify'; text: string }
   | { type: 'request'; id: number; method: string; params: Record<string, unknown> };
 
+type Contributes = {
+  commands: { command: string; title: string }[];
+  keybindings: { command: string; key: string }[];
+};
+
 const queryMethods = ['query', 'copy', 'insert'];
+
+const graphCommandPrefix = '3d-mql.graph.';
 
 const themeKey = '3d-mql.dark';
 
@@ -105,6 +112,10 @@ export class GraphPanel {
     if (method === 'connection') return printConnection(this.client, id);
     if (method === 'run') return this.client.run(String(params.command ?? ''));
     if (method === 'openDocument') return this.openDocument(String(params.content ?? ''));
+    if (method === 'keybindings') return Promise.resolve(this.keybindings());
+    if (method === 'openKeybindings') {
+      return Promise.resolve(vscode.commands.executeCommand('workbench.action.openGlobalKeybindings', graphCommandPrefix));
+    }
     if (queryMethods.includes(method)) return this.query(method, String(params.action), params.targets as QueryTarget[]);
     return Promise.reject(new Error(`알 수 없는 요청입니다: ${method}`));
   }
@@ -129,6 +140,16 @@ export class GraphPanel {
   private async openDocument(content: string) {
     const document = await vscode.workspace.openTextDocument({ content });
     await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+  }
+
+  private keybindings() {
+    const { commands, keybindings } = this.context.extension.packageJSON.contributes as Contributes;
+    return commands
+      .filter((item) => item.command.startsWith(graphCommandPrefix))
+      .map((item) => ({
+        title: item.title.replace(/^3D MQL: /, ''),
+        key: keybindings.find((binding) => binding.command === item.command)?.key ?? '',
+      }));
   }
 
   private notify(text: string) {

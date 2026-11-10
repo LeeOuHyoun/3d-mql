@@ -28,6 +28,7 @@ import ContextMenu from './components/ContextMenu.vue'
 import MqlConsole from './components/MqlConsole.vue'
 import ExpandDialog from './components/ExpandDialog.vue'
 import CompareDialog from './components/CompareDialog.vue'
+import ShortcutGuideDialog from './components/ShortcutGuideDialog.vue'
 
 const {
   isDark,
@@ -103,6 +104,8 @@ whenever(
   { flush: 'post' },
 )
 
+const isShortcutGuideOpen = ref(false)
+
 const shortcuts = {
   clear: clearGraph,
   fit: fitView,
@@ -114,6 +117,7 @@ const shortcuts = {
   forward: goForward,
   graphFullscreen: toggleGraphFullscreen,
   consoleFullscreen: toggleConsoleFullscreen,
+  shortcuts: useToggle(isShortcutGuideOpen),
 }
 
 tryOnScopeDispose(onMessage((message) => message?.type === 'shortcut' && shortcuts[message.name]?.()))
@@ -201,6 +205,7 @@ const contextMenuItems = computed(() => {
       @back="goBack"
       @forward="goForward"
       @go="goHistory"
+      @shortcuts="isShortcutGuideOpen = true"
     />
     <Transition name="pop">
       <div
@@ -301,6 +306,9 @@ const contextMenuItems = computed(() => {
     </Transition>
     <Transition name="dialog">
       <CompareDialog v-if="compareItems.length === 2" :items="compareItems" @close="compareItems = []" />
+    </Transition>
+    <Transition name="dialog">
+      <ShortcutGuideDialog v-if="isShortcutGuideOpen" @close="isShortcutGuideOpen = false" />
     </Transition>
   </div>
 </template>

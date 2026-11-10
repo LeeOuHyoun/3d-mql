@@ -22,6 +22,7 @@ import {
   MoveRight,
   Scan,
   Terminal,
+  Keyboard,
 } from '@lucide/vue'
 import ContextMenu from './ContextMenu.vue'
 
@@ -41,7 +42,7 @@ const isMinimapOpen = defineModel('isMinimapOpen', { type: Boolean, default: tru
 const isConsoleOpen = defineModel('isConsoleOpen', { type: Boolean, default: false })
 const graphFilter = defineModel('graphFilter', { type: String, default: '' })
 const layoutType = defineModel('layoutType', { type: String, default: 'radial' })
-const emit = defineEmits(['search', 'resetView', 'fit', 'clear', 'toggleTheme', 'reconnect', 'back', 'forward', 'go'])
+const emit = defineEmits(['search', 'resetView', 'fit', 'clear', 'toggleTheme', 'reconnect', 'back', 'forward', 'go', 'shortcuts'])
 
 const layouts = [
   { value: 'radial', title: 'Radial 레이아웃', icon: Orbit },
@@ -83,9 +84,9 @@ const statusMap = {
 const status = computed(() => statusMap[props.connection.state] || statusMap.connecting)
 
 const fields = [
-  { key: 'type', placeholder: 'Type 또는 Object ID', width: 'w-44' },
-  { key: 'name', placeholder: 'Name', width: 'w-40' },
-  { key: 'revision', placeholder: 'Rev', width: 'w-16' },
+  { key: 'type', placeholder: 'Type 또는 Object ID' },
+  { key: 'name', placeholder: 'Name' },
+  { key: 'revision', placeholder: 'Rev' },
 ]
 const inputClass =
   'h-7 px-2 text-xs rounded-md border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#21252b] text-gray-800 dark:text-[#abb2bf] outline-none focus:border-[#61afef] placeholder:text-gray-400 dark:placeholder:text-[#5c6370]'
@@ -138,13 +139,13 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         <ArrowRight :size="16" />
       </button>
     </div>
-    <form class="flex items-center gap-1.5" @submit.prevent="emit('search')">
+    <form class="flex-1 min-w-80 flex items-center gap-1.5" @submit.prevent="emit('search')">
       <input
         v-for="field in fields"
         :key="field.key"
         v-model="props.form[field.key]"
         :placeholder="field.placeholder"
-        :class="[inputClass, field.width]"
+        :class="[inputClass, 'flex-1 min-w-0']"
         spellcheck="false"
       />
       <button
@@ -160,7 +161,7 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
     <Loader2 v-if="props.isLoading" :size="16" class="animate-spin text-[#e5c07b]" />
     <div class="relative flex items-center">
       <Filter :size="12" class="absolute left-2 text-gray-400 pointer-events-none" />
-      <input v-model="graphFilter" placeholder="그래프 필터" :class="[inputClass, 'w-132 pl-6 pr-6']" spellcheck="false" />
+      <input v-model="graphFilter" placeholder="그래프 필터" :class="[inputClass, 'w-72 pl-6 pr-6']" spellcheck="false" />
       <button
         v-if="graphFilter"
         class="absolute right-1 p-0.5 flex items-center border-none bg-transparent text-gray-400 hover:text-gray-600 cursor-pointer"
@@ -169,7 +170,6 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         <X :size="12" />
       </button>
     </div>
-    <div class="flex-1"></div>
     <div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-[#abb2bf]" :title="props.connection.message">
       <span class="w-2 h-2 rounded-full" :class="status.dot"></span>
       {{ status.label }}
@@ -206,10 +206,13 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
     </button>
     <button
       :class="[iconBtnClass, isConsoleOpen && activeClass]"
-      title="MQL 콘솔"
+      title="MQL 콘솔 (Alt+C)"
       @click="isConsoleOpen = !isConsoleOpen"
     >
       <Terminal :size="16" />
+    </button>
+    <button :class="iconBtnClass" title="단축키 안내 (Ctrl+Shift+L)" @click="emit('shortcuts')">
+      <Keyboard :size="16" />
     </button>
     <button :class="iconBtnClass" :title="props.isDark ? '라이트 모드' : '다크 모드'" @click="emit('toggleTheme')">
       <Sun v-if="props.isDark" :size="16" />
