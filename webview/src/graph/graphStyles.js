@@ -1,4 +1,4 @@
-export const getCytoscapeStyle = (isDarkVal) => [
+export const getCytoscapeStyle = (isDarkVal, layoutVal) => [
   {
     selector: 'node',
     style: {
@@ -48,7 +48,8 @@ export const getCytoscapeStyle = (isDarkVal) => [
       'line-color': isDarkVal ? '#4b5563' : '#d1d5db',
       'target-arrow-color': isDarkVal ? '#4b5563' : '#d1d5db',
       'target-arrow-shape': 'triangle',
-      'curve-style': 'bezier',
+      'curve-style': layoutVal === 'radial' ? 'bezier' : 'taxi',
+      'taxi-direction': layoutVal === 'flow-tb' ? 'downward' : layoutVal === 'flow-lr' ? 'rightward' : 'auto',
       'text-rotation': 'autorotate',
       'text-background-opacity': 0.8,
       'text-background-color': isDarkVal ? '#282c34' : '#ffffff',

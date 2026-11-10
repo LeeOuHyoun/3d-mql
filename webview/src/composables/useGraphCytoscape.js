@@ -204,7 +204,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     if (!cyContainer.value) return
     cyRef.value = cytoscape({
       container: cyContainer.value,
-      style: getCytoscapeStyle(isDark.value),
+      style: getCytoscapeStyle(isDark.value, layoutType.value),
     })
 
     wheelHandler = (e) => {
@@ -295,7 +295,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
 
   useEventListener(document, 'transitionrun', handleTransitionRun)
   useResizeObserver(cyContainer, resizeGraph)
-  watch(isDark, () => cyRef.value?.style(getCytoscapeStyle(isDark.value)))
+  watch([isDark, layoutType], () => cyRef.value?.style(getCytoscapeStyle(isDark.value, layoutType.value)))
 
   const toggleCluster = (clusterKey) =>
     expandedClusters.has(clusterKey) ? expandedClusters.delete(clusterKey) : expandedClusters.add(clusterKey)
