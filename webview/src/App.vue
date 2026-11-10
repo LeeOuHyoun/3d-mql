@@ -34,7 +34,7 @@ const {
   isDark,
   toggleTheme,
   cyContainer,
-  minimapCanvas,
+  navContainer,
   graphFilter,
   hasElements,
   tooltip,
@@ -91,6 +91,12 @@ const paneFullscreen = (pane) =>
 const isGraphFullscreen = paneFullscreen('graph')
 const isConsoleFullscreen = paneFullscreen('console')
 const toggleGraphFullscreen = useToggle(isGraphFullscreen)
+const hasExitedGraphFullscreen = ref(false)
+
+whenever(
+  () => !isGraphFullscreen.value,
+  () => (hasExitedGraphFullscreen.value = true),
+)
 
 const toggleConsoleFullscreen = () => {
   isConsoleOpen.value = true
@@ -235,7 +241,13 @@ const contextMenuItems = computed(() => {
         <RelationPanel v-if="isRelationPanelOpen" :state="relationFilterState" @close="isRelationPanelOpen = false" />
       </Transition>
       <div class="flex-1 h-full min-w-0 flex flex-col">
-        <div :class="isGraphFullscreen ? 'fixed inset-0 z-40 animate-zoom-in' : 'flex-1 min-h-0 relative'">
+        <div
+          :class="
+            isGraphFullscreen
+              ? 'fixed inset-0 z-40 animate-zoom-in'
+              : ['flex-1 min-h-0 relative', hasExitedGraphFullscreen && 'animate-settle']
+          "
+        >
           <div
             ref="cyContainer"
             class="w-full h-full outline-none select-none overflow-hidden bg-white dark:bg-[#282c34]"
@@ -250,15 +262,13 @@ const contextMenuItems = computed(() => {
             <Minimize2 v-if="isGraphFullscreen" :size="14" />
             <Maximize2 v-else :size="14" />
           </button>
-          <Transition name="fade">
-            <div
-              v-if="isMinimapOpen && hasElements"
-              class="absolute bottom-2 right-2 z-10 w-60 h-44 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90"
-              @mouseenter="hideTooltip"
-            >
-              <canvas ref="minimapCanvas" class="block w-full h-full cursor-pointer"></canvas>
-            </div>
-          </Transition>
+          <div
+            class="absolute bottom-2 right-2 z-10 w-60 h-44 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90 transition-opacity duration-150"
+            :class="!(isMinimapOpen && hasElements) && 'opacity-0 pointer-events-none'"
+            @mouseenter="hideTooltip"
+          >
+            <div ref="navContainer" class="w-full h-full relative overflow-hidden"></div>
+          </div>
           <div
             v-if="!hasElements"
             class="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none text-gray-400 dark:text-[#5c6370] text-xs"

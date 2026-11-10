@@ -15,7 +15,7 @@ export function useGraphExplorer() {
   const {
     cyRef,
     cyContainer,
-    minimapCanvas,
+    navContainer,
     graphFilter,
     hasElements,
     expandedClusters,
@@ -464,7 +464,7 @@ export function useGraphExplorer() {
     isDark,
     toggleTheme,
     cyContainer,
-    minimapCanvas,
+    navContainer,
     graphFilter,
     hasElements,
     tooltip,

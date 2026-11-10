@@ -1,6 +1,6 @@
 import { onMessage, post } from '@/api.js'
 
-const isDark = ref(document.body.classList.contains('vscode-dark'))
+const isDark = ref(document.documentElement.classList.contains('dark'))
 
 watchEffect(() => document.documentElement.classList.toggle('dark', isDark.value))
 

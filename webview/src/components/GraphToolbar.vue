@@ -108,7 +108,7 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
     </button>
     <button
       :class="[iconBtnClass, isRelationPanelOpen && activeClass]"
-      title="관계 필터 · 범례"
+      title="관계 필터 · 범례 (Alt+L)"
       @click="isRelationPanelOpen = !isRelationPanelOpen"
     >
       <ListFilter :size="16" />
@@ -117,7 +117,7 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
       <button
         :class="[iconBtnClass, 'disabled:opacity-30 disabled:cursor-default']"
         :disabled="props.historyIndex <= 0"
-        title="이전 기준 객체"
+        title="이전 기준 객체 (Alt+[)"
         @click="emit('back')"
       >
         <ArrowLeft :size="16" />
@@ -133,7 +133,7 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
       <button
         :class="[iconBtnClass, 'disabled:opacity-30 disabled:cursor-default']"
         :disabled="props.historyIndex >= props.history.length - 1"
-        title="다음 기준 객체"
+        title="다음 기준 객체 (Alt+])"
         @click="emit('forward')"
       >
         <ArrowRight :size="16" />
@@ -191,7 +191,7 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
     <button :class="iconBtnClass" title="레이아웃 다시 정렬" @click="emit('resetView')">
       <RefreshCw :size="16" />
     </button>
-    <button :class="iconBtnClass" title="화면 맞춤" @click="emit('fit')">
+    <button :class="iconBtnClass" title="화면 맞춤 (Ctrl+Alt+F)" @click="emit('fit')">
       <Scan :size="16" />
     </button>
     <button :class="iconBtnClass" title="그래프 지우기 (Ctrl+L)" @click="emit('clear')">
@@ -220,7 +220,7 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
     </button>
     <button
       :class="[iconBtnClass, isDetailPanelOpen && activeClass]"
-      title="상세 패널"
+      title="상세 패널 (Alt+D)"
       @click="isDetailPanelOpen = !isDetailPanelOpen"
     >
       <PanelRight :size="16" />

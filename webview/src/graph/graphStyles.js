@@ -15,7 +15,6 @@ export const getCytoscapeStyle = (isDarkVal) => [
       shape: 'round-rectangle',
       'text-wrap': 'wrap',
       'text-max-width': 160,
-      'text-overflow': 'ellipsis',
       'border-width': 2,
       'border-color': '#4b8bca',
       'transition-property': 'background-color, line-color, target-arrow-color',

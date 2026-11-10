@@ -4,6 +4,12 @@ import { useMqlConsole } from '../composables/useMqlConsole.js'
 import { usePanelResize } from '../composables/usePanelResize.js'
 
 const fullscreen = defineModel('fullscreen', { type: Boolean, default: false })
+const hasExitedFullscreen = ref(false)
+
+whenever(
+  () => !fullscreen.value,
+  () => (hasExitedFullscreen.value = true),
+)
 const { isOpen, input, entries, isRunning, run, clear, openInEditor } = useMqlConsole()
 const { width: height, onResizeStart } = usePanelResize('console', 220, 'top')
 const { width: inputHeight, onResizeStart: onInputResizeStart } = usePanelResize('console-input', 92, 'top', 48, 400)
@@ -31,7 +37,9 @@ const iconBtnClass =
   <div
     class="bg-gray-50 dark:bg-[#21252b] flex flex-col"
     :class="
-      fullscreen ? 'fixed inset-0 z-40 animate-zoom-in' : 'relative shrink-0 border-t border-gray-200 dark:border-[#3e4451]'
+      fullscreen
+        ? 'fixed inset-0 z-40 animate-zoom-in'
+        : ['relative shrink-0 border-t border-gray-200 dark:border-[#3e4451]', hasExitedFullscreen && 'animate-settle']
     "
     :style="fullscreen ? undefined : { height: `${height}px`, '--panel-size': `${height}px` }"
   >

@@ -1,15 +1,17 @@
 import cytoscape from 'cytoscape'
 import fcose from 'cytoscape-fcose'
 import dagre from 'cytoscape-dagre'
-import { isEqual, partition, uniqBy } from 'lodash-es'
+import navigator from 'cytoscape-navigator'
+import 'cytoscape-navigator/cytoscape.js-navigator.css'
+import { debounce, isEqual, partition, uniqBy } from 'lodash-es'
 import { getCytoscapeStyle } from '@/graph/graphStyles.js'
 import { getLayoutOptions } from '@/graph/graphLayouts.js'
 import { processRadialElems } from '@/graph/graphDataProcessor.js'
 import { useGraphEvents } from './useGraphEvents.js'
-import { useMinimap } from './useMinimap.js'
 
 cytoscape.use(fcose)
 cytoscape.use(dagre)
+navigator(cytoscape)
 cytoscape.warnings(false)
 
 const CLUSTER_THRESHOLD = 10
@@ -18,6 +20,7 @@ const FIT_PADDING = 50
 const ANIMATION_MS = 400
 const ANIMATION_EASING = 'ease-out-cubic'
 const ANIMATE_MAX_NODES = 300
+const DOCK_ANIMATION_MS = 200
 
 export function useGraphCytoscape(isDark, lastExpansionMode) {
   const cyRef = shallowRef(null)
@@ -30,7 +33,6 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   let activeLayout = null
   let wheelHandler = null
   const { tooltip, contextMenu, bindGraphEvents, hideTooltip, hideContextMenu } = useGraphEvents()
-  const { minimapCanvas, scheduleMinimap } = useMinimap(cyRef, isDark, () => fitView())
 
   const stopLayout = () => {
     activeLayout?.stop()
@@ -201,6 +203,30 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
 
   watch(graphFilter, applyFilter)
 
+  const navContainer = ref(null)
+  let navInstance = null
+
+  const initNav = () => {
+    if (!cyRef.value || !navContainer.value) return
+    navContainer.value.id = `cy-nav-${Date.now()}`
+    navInstance = cyRef.value.navigator({
+      container: `#${navContainer.value.id}`,
+      viewLiveFramerate: 0,
+      thumbnailEventFramerate: 30,
+      thumbnailLiveFramerate: false,
+      dblClickDelay: 200,
+      removeCustomContainer: false,
+      rerenderDelay: 50,
+    })
+  }
+
+  const resizeNav = () => {
+    if (!navInstance || !cyRef.value) return
+    navInstance.resize()
+    cyRef.value.emit('viewport')
+    cyRef.value.notify({ type: 'render' })
+  }
+
   const initCytoscape = (handlers) => {
     if (!cyContainer.value) return
     cyRef.value = cytoscape({
@@ -221,8 +247,9 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     }
     cyContainer.value.addEventListener('wheel', wheelHandler, { passive: false })
     cyRef.value.on('tap', (evt) => evt.target === cyRef.value && clearPath())
-    cyRef.value.onRender(scheduleMinimap)
+    cyRef.value.on('layoutstop', resizeNav)
     bindGraphEvents(cyRef.value, cyContainer, handlers)
+    initNav()
   }
 
   const resetView = () => runLayout({ fit: true })
@@ -275,11 +302,32 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       cyContainer.value.removeEventListener('wheel', wheelHandler)
       wheelHandler = null
     }
+    navInstance?.destroy()
+    navInstance = null
     cyRef.value?.destroy()
     cyRef.value = null
   }
 
-  useResizeObserver(cyContainer, () => cyRef.value?.resize())
+  const resizeNavLater = debounce(resizeNav, 150)
+  let dockAnimatingUntil = 0
+
+  const resizeGraph = () => {
+    const cy = cyRef.value
+    if (!cy || (performance.now() < dockAnimatingUntil && cy.nodes().length > ANIMATE_MAX_NODES)) return
+    cy.resize()
+    resizeNavLater()
+  }
+
+  const resizeAfterDock = debounce(resizeGraph, DOCK_ANIMATION_MS)
+
+  const handleTransitionRun = (e) => {
+    if (!e.propertyName.startsWith('margin')) return
+    dockAnimatingUntil = performance.now() + DOCK_ANIMATION_MS
+    resizeAfterDock()
+  }
+
+  useEventListener(document, 'transitionrun', handleTransitionRun)
+  useResizeObserver(cyContainer, resizeGraph)
   watch(isDark, () => cyRef.value?.style(getCytoscapeStyle(isDark.value)))
 
   const toggleCluster = (clusterKey) =>
@@ -304,7 +352,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   return {
     cyRef,
     cyContainer,
-    minimapCanvas,
+    navContainer,
     graphFilter,
     hasElements,
     expandedClusters,

@@ -180,7 +180,7 @@ export class GraphPanel {
       `script-src 'nonce-${nonce}'`,
     ].join('; ');
     return `<!doctype html>
-<html lang="ko">
+<html lang="ko"${this.isDark() ? ' class="dark"' : ''}>
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
