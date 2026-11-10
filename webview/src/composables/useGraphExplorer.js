@@ -15,7 +15,6 @@ export function useGraphExplorer() {
   const {
     cyRef,
     cyContainer,
-    navContainer,
     graphFilter,
     hasElements,
     expandedClusters,
@@ -463,8 +462,8 @@ export function useGraphExplorer() {
   return {
     isDark,
     toggleTheme,
+    cyRef,
     cyContainer,
-    navContainer,
     graphFilter,
     hasElements,
     tooltip,

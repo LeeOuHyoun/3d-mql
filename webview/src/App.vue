@@ -24,6 +24,7 @@ import SearchPanel from './components/SearchPanel.vue'
 import RelationPanel from './components/RelationPanel.vue'
 import DetailPanel from './components/DetailPanel.vue'
 import GraphTooltip from './components/GraphTooltip.vue'
+import GraphMinimap from './components/GraphMinimap.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import MqlConsole from './components/MqlConsole.vue'
 import ExpandDialog from './components/ExpandDialog.vue'
@@ -34,7 +35,7 @@ const {
   isDark,
   toggleTheme,
   cyContainer,
-  navContainer,
+  cyRef,
   graphFilter,
   hasElements,
   tooltip,
@@ -262,13 +263,15 @@ const contextMenuItems = computed(() => {
             <Minimize2 v-if="isGraphFullscreen" :size="14" />
             <Maximize2 v-else :size="14" />
           </button>
-          <div
-            class="absolute bottom-2 right-2 z-10 w-60 h-44 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90 transition-opacity duration-150"
-            :class="!(isMinimapOpen && hasElements) && 'opacity-0 pointer-events-none'"
-            @mouseenter="hideTooltip"
-          >
-            <div ref="navContainer" class="w-full h-full relative overflow-hidden"></div>
-          </div>
+          <Transition name="fade">
+            <div
+              v-if="isMinimapOpen && hasElements"
+              class="absolute bottom-2 right-2 z-10 w-60 h-44 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90"
+              @mouseenter="hideTooltip"
+            >
+              <GraphMinimap :cy="cyRef" :isDark="isDark" @fit="fitView" />
+            </div>
+          </Transition>
           <div
             v-if="!hasElements"
             class="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none text-gray-400 dark:text-[#5c6370] text-xs"

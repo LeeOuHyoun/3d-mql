@@ -1,8 +1,6 @@
 import cytoscape from 'cytoscape'
 import fcose from 'cytoscape-fcose'
 import dagre from 'cytoscape-dagre'
-import navigator from 'cytoscape-navigator'
-import 'cytoscape-navigator/cytoscape.js-navigator.css'
 import { debounce, isEqual, partition, uniqBy } from 'lodash-es'
 import { getCytoscapeStyle } from '@/graph/graphStyles.js'
 import { getLayoutOptions } from '@/graph/graphLayouts.js'
@@ -11,7 +9,6 @@ import { useGraphEvents } from './useGraphEvents.js'
 
 cytoscape.use(fcose)
 cytoscape.use(dagre)
-navigator(cytoscape)
 cytoscape.warnings(false)
 
 const CLUSTER_THRESHOLD = 10
@@ -203,30 +200,6 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
 
   watch(graphFilter, applyFilter)
 
-  const navContainer = ref(null)
-  let navInstance = null
-
-  const initNav = () => {
-    if (!cyRef.value || !navContainer.value) return
-    navContainer.value.id = `cy-nav-${Date.now()}`
-    navInstance = cyRef.value.navigator({
-      container: `#${navContainer.value.id}`,
-      viewLiveFramerate: 0,
-      thumbnailEventFramerate: 30,
-      thumbnailLiveFramerate: false,
-      dblClickDelay: 200,
-      removeCustomContainer: false,
-      rerenderDelay: 50,
-    })
-  }
-
-  const resizeNav = () => {
-    if (!navInstance || !cyRef.value) return
-    navInstance.resize()
-    cyRef.value.emit('viewport')
-    cyRef.value.notify({ type: 'render' })
-  }
-
   const initCytoscape = (handlers) => {
     if (!cyContainer.value) return
     cyRef.value = cytoscape({
@@ -247,9 +220,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     }
     cyContainer.value.addEventListener('wheel', wheelHandler, { passive: false })
     cyRef.value.on('tap', (evt) => evt.target === cyRef.value && clearPath())
-    cyRef.value.on('layoutstop', resizeNav)
     bindGraphEvents(cyRef.value, cyContainer, handlers)
-    initNav()
   }
 
   const resetView = () => runLayout({ fit: true })
@@ -302,20 +273,16 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       cyContainer.value.removeEventListener('wheel', wheelHandler)
       wheelHandler = null
     }
-    navInstance?.destroy()
-    navInstance = null
     cyRef.value?.destroy()
     cyRef.value = null
   }
 
-  const resizeNavLater = debounce(resizeNav, 150)
   let dockAnimatingUntil = 0
 
   const resizeGraph = () => {
     const cy = cyRef.value
     if (!cy || (performance.now() < dockAnimatingUntil && cy.nodes().length > ANIMATE_MAX_NODES)) return
     cy.resize()
-    resizeNavLater()
   }
 
   const resizeAfterDock = debounce(resizeGraph, DOCK_ANIMATION_MS)
@@ -352,7 +319,6 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   return {
     cyRef,
     cyContainer,
-    navContainer,
     graphFilter,
     hasElements,
     expandedClusters,
