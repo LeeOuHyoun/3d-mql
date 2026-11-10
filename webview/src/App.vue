@@ -99,6 +99,11 @@ whenever(
   () => (hasExitedGraphFullscreen.value = true),
 )
 
+const openRootFromConsole = (id) => {
+  isConsoleFullscreen.value = false
+  loadRoot(id)
+}
+
 const toggleConsoleFullscreen = () => {
   isConsoleOpen.value = true
   isConsoleFullscreen.value = !isConsoleFullscreen.value
@@ -284,7 +289,7 @@ const contextMenuItems = computed(() => {
           </div>
         </div>
         <Transition :name="isConsoleFullscreen ? 'fade' : 'dock-bottom'">
-          <MqlConsole v-if="isConsoleOpen" v-model:fullscreen="isConsoleFullscreen" />
+          <MqlConsole v-if="isConsoleOpen" v-model:fullscreen="isConsoleFullscreen" @openRoot="openRootFromConsole" />
         </Transition>
       </div>
       <DetailPanel
