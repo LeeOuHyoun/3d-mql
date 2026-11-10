@@ -10,6 +10,7 @@ const emit = defineEmits(['fit'])
 const PADDING = 6
 const WHEEL_ZOOM_FACTOR = 1.2
 const THUMBNAIL_THROTTLE_MS = 100
+const REGION_MARGIN_RATIO = 0.25
 
 const panelRef = ref(null)
 const { width: panelWidth, height: panelHeight } = useElementSize(panelRef)
@@ -23,10 +24,15 @@ const unionBox = (a, b) => {
   return { ...box, w: box.x2 - box.x1, h: box.y2 - box.y1 }
 }
 
+const padBox = (box) => {
+  const margin = Math.max(box.w, box.h) * REGION_MARGIN_RATIO
+  return { x1: box.x1 - margin, y1: box.y1 - margin, x2: box.x2 + margin, y2: box.y2 + margin }
+}
+
 const transform = computed(() => {
   if (frozenTransform.value) return frozenTransform.value
   if (!thumbnail.value || !extent.value || !panelWidth.value) return null
-  const box = unionBox(thumbnail.value.box, extent.value)
+  const box = unionBox(padBox(thumbnail.value.box), extent.value)
   const scale = Math.min((panelWidth.value - PADDING * 2) / box.w, (panelHeight.value - PADDING * 2) / box.h)
   return {
     scale,
