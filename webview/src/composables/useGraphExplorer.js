@@ -1,13 +1,34 @@
-import { debounce } from 'lodash-es'
-import { getState, onMessage, post, request, setState } from '@/api.js'
+import { countBy, debounce, isEqual, partition, pick, uniq, uniqWith, upperFirst } from 'lodash-es'
+import { cachedRequest, clearRequestCache, getState, onMessage, post, request, setState } from '@/api.js'
 import { useTheme } from './useTheme.js'
 import { useGraphCytoscape } from './useGraphCytoscape.js'
 import { useRelationFilter } from './useRelationFilter.js'
 import { useMqlConsole } from './useMqlConsole.js'
+import { isPending, pendingId, pendingKey, useChangeBasket } from './useChangeBasket.js'
 
 export const objectIdPattern = /^(\d+\.\d+\.\d+\.\d+|[0-9a-f]{32})$/i
 const plainIdPattern = /^\d+\.\d+\.\d+\.\d+$/
+const readPattern = /^(print|list|temp|expand|query|help|version|eval)\b/i
 const DETAIL_CACHE_SIZE = 300
+const ADD_LIMIT = 50
+const diffKinds = [
+  { key: 'added', label: '추가' },
+  { key: 'removed', label: '삭제' },
+  { key: 'changed', label: '변경' },
+]
+const impactKinds = [
+  { key: 'float', label: 'float' },
+  { key: 'replicate', label: 'replicate' },
+  { key: 'none', label: 'none' },
+  { key: 'unknown', label: '알 수 없음' },
+]
+const modifyEvents = { name: 'ChangeName', revision: 'ChangeName', owner: 'ChangeOwner', description: 'ModifyDescription' }
+const restoreFields = ['owner', 'description', 'organization', 'project']
+
+const chipsOf = (kinds, values) => {
+  const counts = countBy(values)
+  return kinds.filter((kind) => counts[kind.key]).map((kind) => ({ ...kind, count: counts[kind.key] }))
+}
 
 export function useGraphExplorer() {
   const { isDark, toggleTheme } = useTheme()
@@ -28,6 +49,12 @@ export function useGraphExplorer() {
     fitView,
     focusElement,
     findPath,
+    pathExpression,
+    highlightIds,
+    captureGhosts,
+    markDiff,
+    markImpact,
+    clearMarks,
     layoutType,
     destroyCy,
     toggleCluster,
@@ -39,9 +66,26 @@ export function useGraphExplorer() {
   } = useGraphCytoscape(isDark, lastExpansionMode)
   const errorMsg = ref('')
 
+  const guarded =
+    (action) =>
+    async (...args) => {
+      try {
+        return await action(...args)
+      } catch (e) {
+        errorMsg.value = e.message
+      }
+    }
+
   const connection = ref({ state: 'connecting', message: '' })
+  const context = computed(() => {
+    const text = connection.value.state === 'ready' ? connection.value.message : ''
+    const user = /\buser\s+(.+?)(?=\s+(?:role|vault)\b|$)/i.exec(text)?.[1] ?? ''
+    const vault = /\bvault\s+(.+?)(?=\s+(?:user|role)\b|$)/i.exec(text)?.[1] ?? ''
+    return { user, vault, label: user ? [user, vault].filter(Boolean).join(' · ') : text }
+  })
   const reconnect = () => {
     detailCache.clear()
+    clearRequestCache()
     post({ type: 'reconnect' })
   }
 
@@ -55,6 +99,7 @@ export function useGraphExplorer() {
 
   let rawNodes = {}
   let rawEdges = {}
+  let explorations = []
   const rootId = ref('')
   const rootItem = shallowRef(null)
   const isLoading = ref(false)
@@ -73,26 +118,126 @@ export function useGraphExplorer() {
 
   const toEdge = (e) => ({ ...e, source: e.from, target: e.to, displayName: e.label, isReverse: e.reverse })
 
+  const notice = shallowRef(null)
+
+  const clearNotice = () => {
+    if (!notice.value) return
+    notice.value = null
+    clearMarks()
+  }
+
+  const focusNotice = (item) => {
+    if (focusElement(item.kind === 'removed' ? `ghost-${item.id}` : item.id)) return
+    post({ type: 'notify', text: '그래프에 따로 그려지지 않은 항목입니다.' })
+  }
+
   const doSyncGraph = (layout = {}) => {
-    syncGraph(rawNodes, rawEdges, rootId.value, layout)
+    clearNotice()
+    syncGraph(rawNodes, rawEdges, rootId.value, layout, basket.overlay.value)
     rootItem.value = rawNodes[rootId.value] ?? null
     refreshRelations()
     onSelectionChange()
     persist()
   }
 
-  const mergeExpansion = (sourceId, direction, { nodes, edges }, replace = true) => {
-    Object.keys(rawEdges).forEach((key) => {
-      const e = rawEdges[key]
+  const rawGraph = () => ({ nodes: rawNodes, edges: rawEdges })
+
+  const mergeExpansion = (sourceId, direction, { nodes, edges }, replace = true, target = rawGraph()) => {
+    Object.keys(target.edges).forEach((key) => {
+      const e = target.edges[key]
       const isOwn = e.isReverse ? e.to === sourceId : e.from === sourceId
-      if (replace && isOwn && (direction === 'both' || e.isReverse === (direction === 'to'))) delete rawEdges[key]
+      if (replace && isOwn && (direction === 'both' || e.isReverse === (direction === 'to'))) delete target.edges[key]
     })
     nodes.forEach((n) => {
-      rawNodes[n.id] ??= toNode(n)
+      target.nodes[n.id] = { ...target.nodes[n.id], ...toNode(n) }
     })
     edges.forEach((e) => {
-      rawEdges[e.id] ??= toEdge(e)
+      target.edges[e.id] ??= toEdge(e)
     })
+  }
+
+  const explorers = {
+    expand: {
+      fetch: ({ id, direction, options }) => request('expand', { ...options, id, direction }),
+      apply: ({ id, direction, options }, result, target) => {
+        if (target.nodes[id]) mergeExpansion(id, direction, result, !options, target)
+      },
+    },
+    link: {
+      fetch: async ({ ids }) => {
+        const results = await Promise.allSettled(ids.map((id) => request('expand', { id, direction: 'both' })))
+        const [found, failed] = partition(results, { status: 'fulfilled' })
+        if (!found.length) throw failed[0].reason
+        return found.map((result) => result.value)
+      },
+      apply: (entry, results, target) => {
+        const before = Object.keys(target.edges).length
+        results
+          .flatMap((result) => result.edges)
+          .forEach((e) => {
+            if (target.nodes[e.from] && target.nodes[e.to]) target.edges[e.id] ??= toEdge(e)
+          })
+        return Object.keys(target.edges).length - before
+      },
+    },
+    connect: {
+      fetch: ({ from, relType }) => request('expand', { id: from, direction: 'from', relType }),
+      apply: ({ to, relType }, result, target) => {
+        result.edges
+          .filter((e) => e.to === to && e.label === relType && target.nodes[e.from] && target.nodes[to])
+          .forEach((e) => {
+            target.edges[e.id] ??= toEdge(e)
+          })
+      },
+    },
+    add: {
+      fetch: ({ ids }) => Promise.all(ids.map((id) => requestDetail('object', id).catch(() => null))),
+      apply: (entry, results, target) => {
+        const objects = results.filter((result) => result && !target.nodes[result.summary.id])
+        objects.forEach(({ summary }) => {
+          target.nodes[summary.id] = { ...toNode(summary), isLoose: true }
+        })
+        return objects.map(({ summary }) => summary.id)
+      },
+    },
+    attach: {
+      fetch: async ({ id }) => {
+        const { attached } = await request('connectionLinks', { id })
+        const busIds = uniq(attached.flatMap((e) => [e.from, e.to]).filter(Boolean))
+        return { attached, objects: await Promise.all(busIds.map((busId) => requestDetail('object', busId))) }
+      },
+      apply: (entry, { attached, objects }, target) => {
+        const before = Object.keys(target.edges).length
+        const hasEnd = (busId, relId) => !!(relId ? target.edges[relId] : target.nodes[busId])
+        objects.forEach(({ summary }) => {
+          target.nodes[summary.id] ??= toNode(summary)
+        })
+        attached.forEach((e) => {
+          if (hasEnd(e.from, e.fromRel) && hasEnd(e.to, e.toRel)) target.edges[e.id] ??= toEdge(e)
+        })
+        return Object.keys(target.edges).length - before
+      },
+    },
+  }
+
+  const recordExploration = (entry) => {
+    const index = explorations.findIndex((item) => isEqual(item, entry))
+    if (index < 0) {
+      explorations = [...explorations, entry]
+      return
+    }
+    const [siblings, others] = partition(
+      explorations.slice(index + 1),
+      (item) => item.kind === 'expand' && item.id === entry.id,
+    )
+    explorations = [...explorations.slice(0, index), ...siblings, entry, ...others]
+  }
+
+  const explore = async (entry) => {
+    const { fetch, apply } = explorers[entry.kind]
+    const result = apply(entry, await fetch(entry), rawGraph())
+    recordExploration(entry)
+    return result
   }
 
   const expand = async (id, direction, options = null) => {
@@ -100,7 +245,7 @@ export function useGraphExplorer() {
     isLoading.value = true
     errorMsg.value = ''
     try {
-      mergeExpansion(id, direction, await request('expand', { ...options, id, direction }), !options)
+      await explore({ kind: 'expand', id, direction, options })
       lastExpansionMode.value = direction === 'to' ? 'backward' : 'forward'
       lastExpandedNodeId.value = id
       doSyncGraph({ anchorId: id })
@@ -124,14 +269,7 @@ export function useGraphExplorer() {
     isLoading.value = true
     errorMsg.value = ''
     try {
-      const results = await Promise.all(ids.map((id) => request('expand', { id, direction: 'both' })))
-      const before = Object.keys(rawEdges).length
-      results
-        .flatMap((result) => result.edges)
-        .forEach((e) => {
-          if (rawNodes[e.from] && rawNodes[e.to]) rawEdges[e.id] ??= toEdge(e)
-        })
-      const added = Object.keys(rawEdges).length - before
+      const added = await explore({ kind: 'link', ids })
       post({ type: 'notify', text: added ? `기존 노드 사이의 관계 ${added}건을 연결했습니다.` : '새로 연결할 관계가 없습니다.' })
       if (added) doSyncGraph()
     } catch (e) {
@@ -144,6 +282,7 @@ export function useGraphExplorer() {
   const clearGraph = () => {
     rawNodes = {}
     rawEdges = {}
+    explorations = []
     rootId.value = ''
     graphFilter.value = ''
     lastExpandedNodeId.value = null
@@ -174,6 +313,14 @@ export function useGraphExplorer() {
 
   const goForward = () => goHistory(historyIndex.value + 1)
 
+  const loadedAt = ref(0)
+  const isStale = ref(false)
+
+  const markLoaded = () => {
+    loadedAt.value = Date.now()
+    isStale.value = false
+  }
+
   const loadRoot = async (id, record = true) => {
     isLoading.value = true
     errorMsg.value = ''
@@ -187,6 +334,8 @@ export function useGraphExplorer() {
       rootId.value = summary.id
       rawNodes[summary.id] = toNode(summary)
       mergeExpansion(summary.id, 'both', expansion)
+      explorations = [{ kind: 'expand', id: summary.id, direction: 'both', options: null }]
+      markLoaded()
       lastExpansionMode.value = 'forward'
       if (record) recordHistory(summary)
       doSyncGraph({ fit: true })
@@ -199,7 +348,119 @@ export function useGraphExplorer() {
     }
   }
 
-  const searchForm = reactive({ type: '', name: '', revision: '' })
+  const describeNode = (n) => `${n.name} ${n.revision} (${n.type})`
+
+  const diffGraphs = (before, after) => {
+    const endName = (graph, id, relId) => (relId ? 'connection' : (graph.nodes[id]?.name ?? id))
+    const describeEdge = (graph) => (e) =>
+      `${endName(graph, e.from, e.fromRel)} → ${e.label} → ${endName(graph, e.to, e.toRel)}`
+    const only = (items, others, kind, describe) =>
+      Object.values(items)
+        .filter((item) => !others[item.id])
+        .map((item) => ({ id: item.id, kind, label: describe(item) }))
+    const describeChange = (was, now) =>
+      was.label === now.label
+        ? `${describeNode(now)} · ${was.current} → ${now.current}`
+        : `${describeNode(was)} → ${describeNode(now)}`
+    return [
+      ...only(after.nodes, before.nodes, 'added', describeNode),
+      ...only(after.edges, before.edges, 'added', describeEdge(after)),
+      ...only(before.nodes, after.nodes, 'removed', describeNode),
+      ...only(before.edges, after.edges, 'removed', describeEdge(before)),
+      ...Object.values(after.nodes)
+        .filter((now) => before.nodes[now.id])
+        .filter((now) => before.nodes[now.id].current !== now.current || before.nodes[now.id].label !== now.label)
+        .map((now) => ({ id: now.id, kind: 'changed', label: describeChange(before.nodes[now.id], now) })),
+    ]
+  }
+
+  const refresh = async () => {
+    if (!rootId.value || isLoading.value) return
+    isLoading.value = true
+    errorMsg.value = ''
+    try {
+      detailCache.clear()
+      clearRequestCache()
+      const [{ summary }, results] = await Promise.all([
+        requestDetail('object', rootId.value),
+        Promise.all(explorations.map((entry) => explorers[entry.kind].fetch(entry).catch(() => null))),
+      ])
+      const before = rawGraph()
+      const after = { nodes: { [summary.id]: toNode(summary) }, edges: {} }
+      const pending = explorations
+        .map((entry, index) => ({ entry, result: results[index] }))
+        .filter((item) => item.result)
+      const isExpandable = ({ entry }) => entry.kind === 'expand' && !!after.nodes[entry.id]
+      while (pending.length) {
+        const isBlocked = pending[0].entry.kind === 'expand' && !isExpandable(pending[0])
+        const [{ entry, result }] = pending.splice(isBlocked ? Math.max(pending.findIndex(isExpandable), 0) : 0, 1)
+        explorers[entry.kind].apply(entry, result, after)
+      }
+      const items = diffGraphs(before, after)
+      const idsOf = (kind) => items.filter((item) => item.kind === kind).map((item) => item.id)
+      const ghosts = captureGhosts(idsOf('removed'))
+      rawNodes = after.nodes
+      rawEdges = after.edges
+      markLoaded()
+      doSyncGraph(idsOf('added').length ? {} : null)
+      if (!items.length) {
+        post({ type: 'notify', text: '새로고침했습니다. 달라진 내용이 없습니다.' })
+        return
+      }
+      markDiff({ added: idsOf('added'), changed: idsOf('changed') }, ghosts)
+      notice.value = { title: '새로고침 결과', chips: chipsOf(diffKinds, items.map((item) => item.kind)), items }
+    } catch (e) {
+      errorMsg.value = e.message
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  const highlightObjects = (ids) => {
+    const found = ids.filter((id) => rawNodes[id] || rawEdges[id])
+    highlightIds(found)
+    post({ type: 'notify', text: `결과의 ID ${ids.length}개 중 ${found.length}개가 그래프에 있습니다.` })
+  }
+
+  const addObjects = guarded(async (ids) => {
+    const fresh = ids.filter((id) => !rawNodes[id] && !rawEdges[id])
+    if (!rootId.value && fresh.length && !(await loadRoot(fresh[0]))) return
+    const targets = fresh.filter((id) => !rawNodes[id]).slice(0, ADD_LIMIT)
+    if (!targets.length) {
+      post({ type: 'notify', text: '그래프에 새로 추가할 객체가 없습니다.' })
+      return
+    }
+    isLoading.value = true
+    try {
+      const added = await explore({ kind: 'add', ids: targets })
+      if (added.length) await explore({ kind: 'link', ids: added })
+      const capped = fresh.length > ADD_LIMIT ? ` (한 번에 최대 ${ADD_LIMIT}개)` : ''
+      post({ type: 'notify', text: `그래프에 객체 ${added.length}개를 추가했습니다.${capped}` })
+      if (added.length) doSyncGraph({})
+    } finally {
+      isLoading.value = false
+    }
+  })
+
+  const attachConnections = guarded(async (edgeId) => {
+    isLoading.value = true
+    try {
+      const added = await explore({ kind: 'attach', id: edgeId })
+      post({
+        type: 'notify',
+        text: added ? `connection에 붙은 연결 ${added}건을 그래프에 표시했습니다.` : '그래프에 표시할 연결이 없습니다.',
+      })
+      if (!added) return
+      const { from, to } = rawEdges[edgeId] ?? {}
+      if (from) pinNode(from)
+      if (to) pinNode(to)
+      doSyncGraph({})
+    } finally {
+      isLoading.value = false
+    }
+  })
+
+  const searchForm = reactive({ type: '', name: '', revision: '', where: '' })
   const searchResults = ref([])
   const searchLimit = ref(0)
   const isSearching = ref(false)
@@ -212,7 +473,7 @@ export function useGraphExplorer() {
       return
     }
     if (Object.values(searchForm).every((value) => !value.replaceAll('*', '').trim())) {
-      errorMsg.value = 'Type · Name · Rev 중 하나 이상에 * 이외의 검색어를 입력하세요.'
+      errorMsg.value = 'Type · Name · Rev · Where 중 하나 이상에 * 이외의 검색어를 입력하세요.'
       return
     }
     isSearching.value = true
@@ -228,6 +489,12 @@ export function useGraphExplorer() {
     } finally {
       isSearching.value = false
     }
+  }
+
+  const addSearchCondition = ({ expression, type }) => {
+    searchForm.where = [searchForm.where.trim(), expression].filter(Boolean).join(' && ')
+    if (!searchForm.type.replaceAll('*', '').trim()) searchForm.type = type
+    post({ type: 'notify', text: `검색 조건에 추가했습니다: ${expression}` })
   }
 
   const selectedItem = ref(null)
@@ -274,15 +541,16 @@ export function useGraphExplorer() {
   const toSelectedItem = (el) => {
     const data = el.data()
     const members = (data.childNodeIds || []).map((id) => rawNodes[id]).filter(Boolean)
-    return { ...data, members, isNode: el.isNode(), isEdge: el.isEdge() }
+    const isEdge = el.isEdge() || !!data.isJunction
+    return { ...data, members, isNode: !isEdge, isEdge }
   }
 
   const showDetail = (el) => {
-    const data = el.data()
-    const method = el.isNode() ? 'object' : 'connection'
-    const id = data.originalId || data.id
-    const isCluster = data.isCluster || String(data.id).startsWith('edge-cluster')
-    selectedItem.value = toSelectedItem(el)
+    const item = toSelectedItem(el)
+    const method = item.isNode ? 'object' : 'connection'
+    const id = item.originalId || item.id
+    const isCluster = item.isCluster || item.inert || item.virtual || String(item.id).startsWith('edge-cluster')
+    selectedItem.value = item
     detailTarget = null
     detail.value = isCluster ? null : (detailCache.get(`${method}:${id}`) ?? null)
     isDetailLoading.value = !isCluster && !detail.value
@@ -322,9 +590,234 @@ export function useGraphExplorer() {
     post({ type: 'notify', text: '관계 필터로 숨겨져 있어 그래프에서 찾을 수 없습니다.' })
   }
 
-  const { run: runInConsole, runCount } = useMqlConsole()
+  const { run: runInConsole, runCount, entries } = useMqlConsole()
 
-  watch(runCount, () => detailCache.clear())
+  watch(runCount, () => {
+    detailCache.clear()
+    clearRequestCache()
+    const statements = (entries.value.at(-1)?.command ?? '').split(';').map((statement) => statement.trim())
+    if (statements.some((statement) => statement && !readPattern.test(statement))) isStale.value = true
+  })
+
+  const onApplied = async (createdIds = [], connected = []) => {
+    const fresh = createdIds.filter((id) => !rawNodes[id])
+    if (fresh.length) await addObjects(fresh)
+    connected
+      .filter(({ from, to }) => rawNodes[from] && rawNodes[to])
+      .forEach(({ from, to, relType }) => recordExploration({ kind: 'connect', from, to, relType }))
+    await refresh()
+  }
+
+  const basket = useChangeBasket(connection, onApplied, () => ({
+    name: rootItem.value ? `${rootItem.value.name} ${rootItem.value.revision}` : '3d-mql',
+    user: context.value.user,
+  }))
+
+  watch(basket.overlay, () => doSyncGraph(null))
+
+  const nameOf = (id) => {
+    const node = rawNodes[id] ?? basket.createOf(id)?.params.object
+    return node ? `${node.name} ${node.revision}` : id
+  }
+
+  const policyOf = async (id) => {
+    const { basics } = await requestDetail('object', id)
+    return basics.find((field) => field.key === 'policy')?.value
+  }
+
+  const changeMeta = {
+    connect: ({ from, to, relType }) => ({
+      label: `connect · ${nameOf(from)} → ${relType} → ${nameOf(to)}`,
+      edge: { from, to, relType },
+      trigger: { source: { relationship: relType }, prefix: 'Create' },
+    }),
+    disconnect: ({ id, from, to, relType }) => ({
+      label: `disconnect · ${nameOf(from)} → ${relType} → ${nameOf(to)}`,
+      marks: [id],
+      trigger: { source: { relationship: relType }, prefix: 'Delete' },
+    }),
+    modify: ({ target, id, fields, relType }) => ({
+      label: `modify · ${target === 'connection' ? relType : nameOf(id)} · ${uniq(fields.map((field) => field.key)).join(', ')}`,
+      marks: [id],
+      trigger: {
+        source: target === 'connection' ? { relationship: relType } : { type: rawNodes[id]?.type },
+        prefix: uniq(fields.map((field) => (field.isAttribute ? 'ModifyAttribute' : modifyEvents[field.key]))),
+      },
+    }),
+    create: ({ object }) => ({
+      label: `create · ${object.name} ${object.revision} (${object.type})`,
+      node: {
+        ...pick(object, ['type', 'name', 'revision']),
+        current: '',
+        label: `${object.name} ${object.revision}\n(${object.type})`,
+      },
+      trigger: { source: { type: object.type }, prefix: 'Create' },
+    }),
+    delete: ({ id, connections }) => ({
+      label: `delete · ${nameOf(id)}${connections ? ` · 연결 ${connections}건 함께 삭제` : ''}`,
+      marks: [id],
+      trigger: { source: { type: rawNodes[id]?.type }, prefix: 'Delete' },
+    }),
+  }
+
+  const stateMeta = async ({ kind, id, signature }) => ({
+    label: [kind, nameOf(id), signature].filter(Boolean).join(' · '),
+    marks: [id],
+    trigger: { source: { policy: await policyOf(id) }, state: rawNodes[id]?.current, prefix: upperFirst(kind) },
+  })
+
+  const metaOf = async (params) => ({ kind: params.kind, ...(await (changeMeta[params.kind] ?? stateMeta)(params)) })
+
+  const stageChange = guarded(async (params) => basket.stageChange(params, await metaOf(params)))
+
+  const restorableAttributes = async (attributes) => {
+    const metas = await cachedRequest('attributes', { names: attributes.map((field) => field.key) }).catch(() => [])
+    return attributes.filter((field, index) => field.value || metas[index]?.default)
+  }
+
+  const stageDisconnect = guarded(async (id) => {
+    const { from, to, fromRel, toRel, label } = rawEdges[id]
+    const { attributes } = await requestDetail('connection', id)
+    await stageChange({
+      kind: 'disconnect',
+      id,
+      from,
+      to,
+      fromRel,
+      toRel,
+      relType: label,
+      attributes: await restorableAttributes(attributes),
+    })
+  })
+
+  const connectDialog = shallowRef(null)
+
+  const submitConnect = (params) => {
+    connectDialog.value = null
+    stageChange({ kind: 'connect', ...params })
+  }
+
+  const editTarget = shallowRef(null)
+
+  const openEdit = (item, focus = null) => {
+    const target = item.isEdge ? 'connection' : 'bus'
+    const id = item.originalId || item.id
+    const staged = basket.pendingChanges.value.find(
+      (change) => change.kind === 'modify' && change.params?.target === target && change.params.id === id,
+    )
+    editTarget.value = {
+      target,
+      id,
+      relType: item.label,
+      title: item.isEdge ? item.label : `${item.name} ${item.revision} (${item.type})`,
+      focus,
+      staged: staged?.params.fields ?? [],
+      key: staged?.key,
+    }
+  }
+
+  const editSelected = (focus) => {
+    if (selectedItem.value) openEdit(selectedItem.value, focus)
+  }
+
+  const submitEdit = guarded(async ({ fields }) => {
+    const { target, id, relType, key } = editTarget.value
+    editTarget.value = null
+    const params = { kind: 'modify', target, id, relType, fields }
+    if (!key) return stageChange(params)
+    if (!fields.length) return basket.removeChange(key)
+    await basket.updateChange(key, params, await metaOf(params))
+  })
+
+  const relationOptions = () => ({
+    edges: Object.values(rawEdges),
+    relations: uniq(relationFilterState.relations.value.map((relation) => relation.label)),
+  })
+
+  const createDialog = shallowRef(null)
+
+  const openCreate = (anchor = null, key = null) => {
+    createDialog.value = {
+      ...relationOptions(),
+      anchor,
+      key,
+      draft: key ? basket.createOf(pendingId(key))?.params.object : null,
+      defaults: { vault: context.value.vault, owner: context.value.user },
+    }
+  }
+
+  const restageDependents = async (key) => {
+    for (const change of basket.dependentsOf(key).filter(isPending)) {
+      await basket.updateChange(change.key, change.params, await metaOf(change.params))
+    }
+  }
+
+  const submitCreate = guarded(async ({ object, link }) => {
+    const { key, anchor } = createDialog.value
+    createDialog.value = null
+    const params = { kind: 'create', object }
+    if (key) {
+      await basket.updateChange(key, params, await metaOf(params))
+      await restageDependents(key)
+      return
+    }
+    const createdKey = await stageChange(params)
+    if (!link || !createdKey) return
+    const ends = [anchor.id, pendingId(createdKey)]
+    const [from, to] = link.isAnchorFrom ? ends : ends.reverse()
+    await stageChange({ kind: 'connect', from, to, relType: link.relType, attributes: link.attributes })
+  })
+
+  const editPending = (id) => openCreate(null, pendingKey(id))
+
+  const removePending = (id) => basket.removeChange(pendingKey(id))
+
+  const stageDelete = guarded(async (id) => {
+    if (id === rootId.value) {
+      throw new Error('기준 객체는 삭제 문장을 담을 수 없습니다. 다른 객체를 기준 객체로 연 뒤 담으세요.')
+    }
+    if (basket.pendingChanges.value.some((change) => change.kind === 'delete' && change.params?.id === id)) {
+      post({ type: 'notify', text: '이 객체의 삭제 문장이 이미 바구니에 있습니다.' })
+      return
+    }
+    const [{ summary, basics, attributes }, { edges }] = await Promise.all([
+      request('object', { id }),
+      request('expand', { id, direction: 'both' }),
+    ])
+    const valueOf = (key) => basics.find((field) => field.key === key)?.value ?? ''
+    const object = {
+      ...pick(summary, ['type', 'name', 'revision']),
+      policy: valueOf('policy'),
+      vault: valueOf('vault'),
+      fields: basics.filter((field) => restoreFields.includes(field.key)),
+      attributes: await restorableAttributes(attributes),
+    }
+    await stageChange({ kind: 'delete', id, object, connections: uniq(edges.map((edge) => edge.id)).length })
+  })
+
+  const showImpact = guarded(async (nodeId, mode) => {
+    const edges = cyRef.value
+      .getElementById(nodeId)
+      .connectedEdges(':visible')
+      .filter((e) => !e.data('inert') && !e.data('virtual'))
+    const labels = uniq(edges.map((e) => e.data('label')))
+    const definitions = await Promise.all(labels.map((label) => cachedRequest('relationship', { id: label }).catch(() => null)))
+    const ruleOf = (e) => {
+      const side = definitions[labels.indexOf(e.data('label'))]?.[e.data('source') === nodeId ? 'from' : 'to']
+      const rule = (side?.[mode] ?? '').toLowerCase()
+      return impactKinds.some((kind) => kind.key === rule) ? rule : 'unknown'
+    }
+    const rules = Object.fromEntries(edges.map((e) => [e.id(), ruleOf(e)]))
+    clearNotice()
+    markImpact(rules)
+    notice.value = {
+      title: `${mode === 'revision' ? 'Revise' : 'Clone'} 영향 · ${nameOf(nodeId)}`,
+      chips: chipsOf(impactKinds, Object.values(rules)),
+      items: [],
+    }
+  })
+
+  const traceItem = shallowRef(null)
 
   const refreshSelectedCluster = () => {
     const el = cyRef.value?.getElementById(selectedItem.value?.id)
@@ -347,6 +840,7 @@ export function useGraphExplorer() {
 
   const onNodeDblTap = (evt) => {
     const node = evt.target
+    if (node.data('isJunction') || node.data('inert')) return
     if (node.data('isCluster')) {
       toggleCluster(node.data('clusterKey'))
       doSyncGraph({ anchorId: clusterAnchor(node.data('clusterKey')) })
@@ -363,6 +857,7 @@ export function useGraphExplorer() {
   const queryMethods = { copy: 'copy', run: 'query', insert: 'insert' }
 
   const runQuery = async (method, action, targets) => {
+    if (!targets.length) return
     try {
       const text = await request(method, { action, targets })
       if (method === 'query') runInConsole(text)
@@ -371,19 +866,34 @@ export function useGraphExplorer() {
     }
   }
 
+  const targetData = (el) => ({ ...el.data(), id: el.data('originalId') || el.id() })
+
+  const pathTargets = (menu) => {
+    const pathTo = menu.target.id()
+    const id = menu.kind === 'multi' ? menu.targets.find((t) => t.id() !== pathTo).id() : rootId.value
+    const path = pathExpression(id, pathTo)
+    if (!path) errorMsg.value = '두 객체를 잇는 실제 관계 경로가 현재 그래프에 보이지 않아 select 식을 만들 수 없습니다.'
+    return path ? [{ id, path, pathTo }] : []
+  }
+
   const compareItems = ref([])
 
   const showPath = ([sourceId, targetId]) => {
     if (!findPath(sourceId, targetId)) errorMsg.value = '현재 그래프에 보이는 관계로는 두 객체가 연결되어 있지 않습니다.'
   }
 
+  const openConnectDialog = (items) => {
+    connectDialog.value = { items, ...relationOptions() }
+  }
+
   const onContextAction = (action) => {
     const menu = contextMenu.value
     hideContextMenu()
     if (!menu) return
-    const id = menu.target.id()
+    const { id } = targetData(menu.target)
     const [prefix, query] = action.split(':')
-    if (query) runQuery(queryMethods[prefix], query, menu.targets.map((t) => t.data()))
+    if (query?.startsWith('path')) runQuery(queryMethods[prefix], query, pathTargets(menu))
+    else if (query) runQuery(queryMethods[prefix], query, menu.targets.map(targetData))
     else if (action === 'expand') expand(id, 'from')
     else if (action === 'whereUsed') expand(id, 'to')
     else if (action === 'expandOptions') expandDialogId.value = id
@@ -391,6 +901,16 @@ export function useGraphExplorer() {
     else if (action === 'linkExisting') linkExisting(menu.targets.map((t) => t.id()))
     else if (action === 'compare') compareItems.value = menu.targets.map((t) => t.data())
     else if (action === 'findPath') showPath(menu.targets.map((t) => t.id()))
+    else if (action === 'connect') openConnectDialog(menu.targets.map((t) => t.data()))
+    else if (action === 'disconnect') stageDisconnect(id)
+    else if (action === 'edit') openEdit(toSelectedItem(menu.target))
+    else if (action === 'createLinked') openCreate(menu.target.data())
+    else if (action === 'delete') stageDelete(id)
+    else if (action === 'editPending') editPending(id)
+    else if (action === 'removePending') removePending(id)
+    else if (action === 'impactRevision') showImpact(id, 'revision')
+    else if (action === 'impactClone') showImpact(id, 'clone')
+    else if (action === 'trace') traceItem.value = menu.target.data()
   }
 
   const persist = debounce(() => {
@@ -398,6 +918,9 @@ export function useGraphExplorer() {
     setState({
       rawNodes,
       rawEdges,
+      explorations,
+      loadedAt: loadedAt.value,
+      changes: basket.changes.value,
       rootId: rootId.value,
       searchForm: { ...searchForm },
       searchResults: searchResults.value,
@@ -418,6 +941,7 @@ export function useGraphExplorer() {
 
   useEventListener(window, 'pagehide', () => persist.flush())
   watch([searchForm, isSearchPanelOpen, hiddenRelations, relationFilter, graphFilter, selectedItem], persist)
+  watch(basket.changes, persist, { deep: true })
 
   const restoreLayout = ({ positions, viewport, detailId }) => {
     const cy = cyRef.value
@@ -427,11 +951,26 @@ export function useGraphExplorer() {
     if (el?.length) showDetail(el)
   }
 
+  const ownExpansions = () =>
+    uniqWith(
+      Object.values(rawEdges).map((e) => ({
+        kind: 'expand',
+        id: e.isReverse ? e.to : e.from,
+        direction: e.isReverse ? 'to' : 'from',
+        options: null,
+      })),
+      isEqual,
+    )
+
   const restore = () => {
     const saved = getState()
     if (!saved) return
     rawNodes = saved.rawNodes
     rawEdges = saved.rawEdges
+    explorations = saved.explorations ?? ownExpansions()
+    loadedAt.value = saved.loadedAt ?? 0
+    isStale.value = !!saved.rootId
+    basket.changes.value = saved.changes ?? []
     rootId.value = saved.rootId
     Object.assign(searchForm, saved.searchForm)
     searchResults.value = saved.searchResults
@@ -472,6 +1011,7 @@ export function useGraphExplorer() {
     hideContextMenu,
     errorMsg,
     connection,
+    context,
     reconnect,
     isLoading,
     searchForm,
@@ -480,9 +1020,19 @@ export function useGraphExplorer() {
     isSearching,
     isSearchPanelOpen,
     onSearch,
+    addSearchCondition,
     loadRoot,
     expand,
     clearGraph,
+    refresh,
+    loadedAt,
+    isStale,
+    notice,
+    clearNotice,
+    focusNotice,
+    highlightObjects,
+    addObjects,
+    attachConnections,
     resetView,
     fitView,
     layoutType,
@@ -505,5 +1055,19 @@ export function useGraphExplorer() {
     compareItems,
     pinClusterMember,
     expandCluster,
+    basket,
+    stageChange,
+    stageDisconnect,
+    connectDialog,
+    submitConnect,
+    editTarget,
+    editSelected,
+    submitEdit,
+    createDialog,
+    openCreate,
+    submitCreate,
+    editPending,
+    removePending,
+    traceItem,
   }
 }

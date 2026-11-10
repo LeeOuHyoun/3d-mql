@@ -1,5 +1,5 @@
 <script setup>
-import { X, Eye } from '@lucide/vue'
+import { X, Target, Square, SquareCheck } from '@lucide/vue'
 import { usePanelResize } from '../composables/usePanelResize.js'
 
 const props = defineProps({
@@ -84,12 +84,15 @@ const rowClass = 'px-4 py-1 flex items-center gap-2 text-xs hover:bg-[#61afef]/1
         @mouseenter="highlightRelation(item.key)"
         @mouseleave="clearHighlight"
       >
-        <input
-          type="checkbox"
-          class="accent-[#61afef] cursor-pointer"
-          :checked="!hiddenRelations.includes(item.key)"
-          @change="toggleRelation(item.key)"
-        />
+        <button
+          class="p-0 flex shrink-0 items-center border-none bg-transparent cursor-pointer"
+          :class="hiddenRelations.includes(item.key) ? 'text-gray-400' : 'text-[#61afef]'"
+          :title="hiddenRelations.includes(item.key) ? '관계 보이기' : '관계 숨기기'"
+          @click="toggleRelation(item.key)"
+        >
+          <Square v-if="hiddenRelations.includes(item.key)" :size="14" />
+          <SquareCheck v-else :size="14" />
+        </button>
         <span
           class="shrink-0 w-4 text-center font-bold"
           :class="item.isReverse ? 'text-cyan-600 dark:text-cyan-400' : 'text-sky-600 dark:text-sky-400'"
@@ -110,7 +113,7 @@ const rowClass = 'px-4 py-1 flex items-center gap-2 text-xs hover:bg-[#61afef]/1
           title="이 관계만 보기"
           @click="showOnlyRelation(item.key)"
         >
-          <Eye :size="12" />
+          <Target :size="12" />
         </button>
       </div>
       <div :class="[sectionClass, 'mt-2']">

@@ -6,8 +6,8 @@ import {
   Eraser,
   Copy,
   Loader2,
-  Maximize2,
-  Minimize2,
+  Fullscreen,
+  Minimize,
   Search,
   History,
   ArrowUp,
@@ -15,8 +15,9 @@ import {
   CaseSensitive,
   Regex,
   Crosshair,
-  Network,
+  ChevronsDown,
   CornerRightUp,
+  CirclePlus,
 } from '@lucide/vue'
 import { request } from '../api.js'
 import { useMqlConsole } from '../composables/useMqlConsole.js'
@@ -27,7 +28,7 @@ import ConsoleHistory from './ConsoleHistory.vue'
 import ContextMenu from './ContextMenu.vue'
 
 const fullscreen = defineModel('fullscreen', { type: Boolean, default: false })
-const emit = defineEmits(['openRoot'])
+const emit = defineEmits(['openRoot', 'highlight', 'add'])
 const hasExitedFullscreen = ref(false)
 
 whenever(
@@ -101,6 +102,12 @@ const objectIdMenuItems = [
     color: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/40',
   },
   {
+    action: 'add',
+    label: '그래프에 추가 (기준 객체 유지)',
+    icon: CirclePlus,
+    color: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/40',
+  },
+  {
     action: 'printBus',
     label: 'print bus 실행',
     icon: Play,
@@ -109,7 +116,7 @@ const objectIdMenuItems = [
   {
     action: 'expandFrom',
     label: 'expand bus (from) 실행',
-    icon: Network,
+    icon: ChevronsDown,
     color: 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/40',
   },
   {
@@ -130,6 +137,7 @@ const handleObjectIdAction = async (action) => {
   const { id } = objectIdMenu.value
   objectIdMenu.value = null
   if (action === 'openRoot') emit('openRoot', id)
+  else if (action === 'add') emit('add', [id])
   else if (action === 'copy') copy(id)
   else run(await request('query', { action, targets: [{ id }] }))
 }
@@ -172,8 +180,8 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         <Eraser :size="14" />
       </button>
       <button :class="iconBtnClass" :title="fullscreen ? '전체 화면 종료 (Esc)' : '전체 화면 (Ctrl+Alt+C)'" @click="fullscreen = !fullscreen">
-        <Minimize2 v-if="fullscreen" :size="14" />
-        <Maximize2 v-else :size="14" />
+        <Minimize v-if="fullscreen" :size="14" />
+        <Fullscreen v-else :size="14" />
       </button>
       <button :class="iconBtnClass" title="닫기" @click="isOpen = false">
         <X :size="14" />
@@ -225,6 +233,8 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
           :entry="entry"
           :findRegex="findRegex"
           @objectId="openObjectIdMenu"
+          @highlight="emit('highlight', $event)"
+          @add="emit('add', $event)"
         />
       </div>
       <ConsoleHistory v-if="isHistoryOpen" @close="isHistoryOpen = false" />

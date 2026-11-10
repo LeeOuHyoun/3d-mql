@@ -11,18 +11,28 @@ import {
   PlugZap,
   Filter,
   X,
-  Map as MapIcon,
-  ListFilter,
+  Telescope,
+  Settings2,
   ArrowLeft,
   ArrowRight,
   Clock,
   Check,
-  Orbit,
-  MoveDown,
-  MoveRight,
-  Scan,
+  Snowflake,
+  Network,
+  Share2,
+  Target,
   Terminal,
   Keyboard,
+  DatabaseBackup,
+  ListChecks,
+  PackagePlus,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpLeft,
+  ArrowUpRight,
+  ArrowDownLeft,
+  ArrowDownRight,
+  RotateCcw,
 } from '@lucide/vue'
 import ContextMenu from './ContextMenu.vue'
 
@@ -32,8 +42,13 @@ const props = defineProps({
   isLoading: { type: Boolean, default: false },
   isDark: { type: Boolean, default: false },
   connection: { type: Object, required: true },
+  context: { type: Object, required: true },
+  loadedAt: { type: Number, default: 0 },
+  isStale: { type: Boolean, default: false },
+  changeCount: { type: Number, default: 0 },
   history: { type: Array, default: () => [] },
   historyIndex: { type: Number, default: -1 },
+  minimapPosition: { type: String, default: 'bottom-right' },
 })
 const isSearchPanelOpen = defineModel('isSearchPanelOpen', { type: Boolean, default: false })
 const isRelationPanelOpen = defineModel('isRelationPanelOpen', { type: Boolean, default: false })
@@ -42,12 +57,57 @@ const isMinimapOpen = defineModel('isMinimapOpen', { type: Boolean, default: tru
 const isConsoleOpen = defineModel('isConsoleOpen', { type: Boolean, default: false })
 const graphFilter = defineModel('graphFilter', { type: String, default: '' })
 const layoutType = defineModel('layoutType', { type: String, default: 'radial' })
-const emit = defineEmits(['search', 'resetView', 'fit', 'clear', 'toggleTheme', 'reconnect', 'back', 'forward', 'go', 'shortcuts'])
+const emit = defineEmits([
+  'search',
+  'refresh',
+  'basket',
+  'create',
+  'resetView',
+  'fit',
+  'clear',
+  'toggleTheme',
+  'reconnect',
+  'back',
+  'forward',
+  'go',
+  'shortcuts',
+  'minimapPosition',
+  'resetMinimap',
+])
+
+const minimapPositions = [
+  { value: 'top-left', title: '왼쪽 위 고정', icon: ArrowUpLeft },
+  { value: 'top', title: '위쪽 고정', icon: ArrowUp },
+  { value: 'top-right', title: '오른쪽 위 고정', icon: ArrowUpRight },
+  { value: 'left', title: '왼쪽 고정', icon: ArrowLeft },
+  { value: 'reset', title: '미니맵 위치 · 크기 초기화', icon: RotateCcw },
+  { value: 'right', title: '오른쪽 고정', icon: ArrowRight },
+  { value: 'bottom-left', title: '왼쪽 아래 고정', icon: ArrowDownLeft },
+  { value: 'bottom', title: '아래쪽 고정', icon: ArrowDown },
+  { value: 'bottom-right', title: '오른쪽 아래 고정', icon: ArrowDownRight },
+]
+const minimapMenuRef = ref(null)
+const isMinimapMenuOpen = ref(false)
+
+onClickOutside(minimapMenuRef, () => (isMinimapMenuOpen.value = false))
+whenever(
+  () => !isMinimapOpen.value,
+  () => (isMinimapMenuOpen.value = false),
+)
+
+const toggleMinimapMenu = () => {
+  isMinimapMenuOpen.value = isMinimapOpen.value && !isMinimapMenuOpen.value
+}
+
+const selectMinimapPosition = (value) => {
+  if (value === 'reset') emit('resetMinimap')
+  else emit('minimapPosition', value)
+}
 
 const layouts = [
-  { value: 'radial', title: 'Radial 레이아웃', icon: Orbit },
-  { value: 'flow-tb', title: 'Flowchart (세로)', icon: MoveDown },
-  { value: 'flow-lr', title: 'Flowchart (가로)', icon: MoveRight },
+  { value: 'radial', title: 'Radial 레이아웃', icon: Snowflake },
+  { value: 'flow-tb', title: 'Flowchart (세로)', icon: Network },
+  { value: 'flow-lr', title: 'Flowchart (가로)', icon: Share2 },
 ]
 
 const historyMenu = shallowRef(null)
@@ -83,10 +143,22 @@ const statusMap = {
 }
 const status = computed(() => statusMap[props.connection.state] || statusMap.connecting)
 
+const loadedText = useDateFormat(() => props.loadedAt, 'MM-DD HH:mm:ss')
+const refreshTitle = computed(() =>
+  [
+    '데이터 새로고침 (펼친 내용을 다시 조회하고 달라진 곳을 표시)',
+    props.loadedAt && `마지막 조회: ${loadedText.value}`,
+    props.isStale && '지난 세션에서 복원했거나 쓰기 명령을 실행한 뒤라 최신이 아닐 수 있습니다.',
+  ]
+    .filter(Boolean)
+    .join('\n'),
+)
+
 const fields = [
-  { key: 'type', placeholder: 'Type 또는 Object ID' },
-  { key: 'name', placeholder: 'Name' },
-  { key: 'revision', placeholder: 'Rev' },
+  { key: 'type', placeholder: 'Type 또는 Object ID', class: 'flex-1' },
+  { key: 'name', placeholder: 'Name', class: 'flex-1' },
+  { key: 'revision', placeholder: 'Rev', class: 'flex-1' },
+  { key: 'where', placeholder: 'Where 조건', class: 'flex-2' },
 ]
 const inputClass =
   'h-7 px-2 text-xs rounded-md border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#21252b] text-gray-800 dark:text-[#abb2bf] outline-none focus:border-[#61afef] placeholder:text-gray-400 dark:placeholder:text-[#5c6370]'
@@ -111,7 +183,7 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
       title="관계 필터 · 범례 (Alt+L)"
       @click="isRelationPanelOpen = !isRelationPanelOpen"
     >
-      <ListFilter :size="16" />
+      <Settings2 :size="16" />
     </button>
     <div class="flex items-center">
       <button
@@ -139,13 +211,13 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         <ArrowRight :size="16" />
       </button>
     </div>
-    <form class="flex-1 min-w-80 flex items-center gap-1.5" @submit.prevent="emit('search')">
+    <form class="flex-1 min-w-96 flex items-center gap-1.5" @submit.prevent="emit('search')">
       <input
         v-for="field in fields"
         :key="field.key"
         v-model="props.form[field.key]"
         :placeholder="field.placeholder"
-        :class="[inputClass, 'flex-1 min-w-0']"
+        :class="[inputClass, field.class, 'min-w-0']"
         spellcheck="false"
       />
       <button
@@ -170,9 +242,12 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         <X :size="12" />
       </button>
     </div>
-    <div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-[#abb2bf]" :title="props.connection.message">
-      <span class="w-2 h-2 rounded-full" :class="status.dot"></span>
-      {{ status.label }}
+    <div
+      class="max-w-56 flex items-center gap-1.5 text-xs text-gray-500 dark:text-[#abb2bf]"
+      :title="props.connection.message"
+    >
+      <span class="w-2 h-2 shrink-0 rounded-full" :class="status.dot"></span>
+      <span class="truncate">{{ props.context.label || status.label }}</span>
     </div>
     <button :class="iconBtnClass" title="MQL 재연결" @click="emit('reconnect')">
       <PlugZap :size="16" />
@@ -188,22 +263,63 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         <component :is="layout.icon" :size="16" />
       </button>
     </div>
+    <button :class="[iconBtnClass, props.isStale && 'text-amber-500!']" :title="refreshTitle" @click="emit('refresh')">
+      <DatabaseBackup :size="16" />
+    </button>
+    <button :class="iconBtnClass" title="새 객체 만들기 (생성 문장을 변경 바구니에 담음)" @click="emit('create')">
+      <PackagePlus :size="16" />
+    </button>
+    <button
+      :class="[iconBtnClass, 'relative', props.changeCount && activeClass]"
+      title="변경 바구니"
+      @click="emit('basket')"
+    >
+      <ListChecks :size="16" />
+      <span
+        v-if="props.changeCount"
+        class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-[#61afef] text-white text-center text-[9px] leading-3.5 font-bold"
+      >
+        {{ props.changeCount }}
+      </span>
+    </button>
     <button :class="iconBtnClass" title="레이아웃 다시 정렬" @click="emit('resetView')">
       <RefreshCw :size="16" />
     </button>
     <button :class="iconBtnClass" title="화면 맞춤 (Ctrl+Alt+F)" @click="emit('fit')">
-      <Scan :size="16" />
+      <Target :size="16" />
     </button>
     <button :class="iconBtnClass" title="그래프 지우기 (Ctrl+L)" @click="emit('clear')">
       <Eraser :size="16" />
     </button>
-    <button
-      :class="[iconBtnClass, isMinimapOpen && activeClass]"
-      title="미니맵 (Alt+M)"
-      @click="isMinimapOpen = !isMinimapOpen"
-    >
-      <MapIcon :size="16" />
-    </button>
+    <div ref="minimapMenuRef" class="relative flex items-center">
+      <button
+        :class="[iconBtnClass, isMinimapOpen && activeClass]"
+        title="미니맵 (Alt+M) · 우클릭: 위치 고정"
+        @click="isMinimapOpen = !isMinimapOpen"
+        @contextmenu.prevent="toggleMinimapMenu"
+      >
+        <Telescope :size="16" />
+      </button>
+      <div
+        v-if="isMinimapMenuOpen"
+        class="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 z-30 p-1 grid grid-cols-3 gap-1 rounded-lg border shadow-xl animate-pop-in bg-gray-50 dark:bg-[#21252b] border-gray-200 dark:border-[#3e4451]"
+      >
+        <button
+          v-for="item in minimapPositions"
+          :key="item.value"
+          class="w-6 h-6 flex items-center justify-center rounded-md border cursor-pointer transition-colors"
+          :class="
+            props.minimapPosition === item.value
+              ? 'border-[#61afef] bg-[#61afef] text-white'
+              : 'border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#1e2227] text-gray-400 hover:text-[#61afef]'
+          "
+          :title="item.title"
+          @click="selectMinimapPosition(item.value)"
+        >
+          <component :is="item.icon" :size="14" />
+        </button>
+      </div>
+    </div>
     <button
       :class="[iconBtnClass, isConsoleOpen && activeClass]"
       title="MQL 콘솔 (Alt+C)"

@@ -1,3 +1,7 @@
+<script>
+const openDialogs = []
+</script>
+
 <script setup>
 import { X } from '@lucide/vue'
 
@@ -7,8 +11,12 @@ const props = defineProps({
 })
 const emit = defineEmits(['close'])
 
+const token = Symbol('dialog')
+openDialogs.push(token)
+tryOnScopeDispose(() => openDialogs.splice(openDialogs.indexOf(token), 1))
+
 const handleEscape = (e) => {
-  if (e.key !== 'Escape') return
+  if (e.key !== 'Escape' || openDialogs.at(-1) !== token) return
   e.preventDefault()
   e.stopPropagation()
   emit('close')

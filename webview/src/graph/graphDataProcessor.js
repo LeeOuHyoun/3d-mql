@@ -1,4 +1,4 @@
-import { groupBy, partition } from 'lodash-es'
+import { groupBy, omit, partition } from 'lodash-es'
 
 const truncateLabel = (str, maxLength = 23) => {
   if (!str) return ''
@@ -13,7 +13,7 @@ const truncateLabel = (str, maxLength = 23) => {
     .join('\n')
 }
 
-const toDisplayLabel = (label) => truncateLabel((label || '').replace(/([_-])/g, '$1 '))
+export const toDisplayLabel = (label) => truncateLabel((label || '').replace(/([_-])/g, '$1 '))
 
 const buildClusterKey = (nodeId, label) => `${nodeId}::${label}`
 
@@ -28,12 +28,24 @@ const lastExpandedFlags = (id, { lastExpandedNodeId, lastExpansionMode }) => ({
   isLastExpandedBackward: lastExpandedNodeId === id && lastExpansionMode === 'backward',
 })
 
+const midIdOf = (relId) => `mid-${relId}`
+
+const pruneDangling = (elems) => {
+  const nodeIds = new Set(elems.filter((el) => el.group === 'nodes').map((el) => el.data.id))
+  const linked = elems.filter((el) => el.group === 'nodes' || (nodeIds.has(el.data.source) && nodeIds.has(el.data.target)))
+  const edgeIds = new Set(linked.filter((el) => el.group === 'edges').map((el) => el.data.id))
+  const hasHalves = (el) => edgeIds.has(`head-${el.data.originalId}`) && edgeIds.has(`tail-${el.data.originalId}`)
+  const kept = linked.filter((el) => !el.data.isJunction || hasHalves(el))
+  return kept.length === elems.length ? kept : pruneDangling(kept)
+}
+
 export const processRadialElems = (rawNodes, rawEdges, rootId, positions, seedPos, options) => {
   const { expandedClusters, pinnedNodes, CLUSTER_THRESHOLD } = options
   const elems = []
-  const nodeIds = new Set()
   const edges = Object.values(rawEdges)
-  const [reverseEdges, forwardEdges] = partition(edges, 'isReverse')
+  const midIds = new Set(edges.flatMap((e) => [e.fromRel, e.toRel]).filter(Boolean))
+  const isPlain = (e) => !midIds.has(e.id) && !e.fromRel && !e.toRel
+  const [reverseEdges, forwardEdges] = partition(edges.filter(isPlain), 'isReverse')
   const edgesBySourceLabel = groupBy(forwardEdges, (e) => buildClusterKey(e.from, e.label))
   const edgesByTargetLabel = groupBy(reverseEdges, (e) => buildClusterKey(e.to, e.label))
   const clusteredEdgeIds = new Set()
@@ -73,7 +85,6 @@ export const processRadialElems = (rawNodes, rawEdges, rootId, positions, seedPo
       },
       position: { ...seedPosition(positions, clusterId, seedPos, isReverse ? 40 : 20) },
     })
-    nodeIds.add(clusterId)
     elems.push({
       group: 'edges',
       data: {
@@ -92,7 +103,7 @@ export const processRadialElems = (rawNodes, rawEdges, rootId, positions, seedPo
   Object.entries(edgesByTargetLabel).forEach(([key, group]) => addCluster(key, group, true))
 
   Object.values(rawNodes).forEach((n) => {
-    if (n.id !== rootId && (totalCount[n.id] || 0) === (clusteredCount[n.id] || 0)) return
+    if (n.id !== rootId && !n.isLoose && (totalCount[n.id] || 0) === (clusteredCount[n.id] || 0)) return
     elems.push({
       group: 'nodes',
       data: {
@@ -103,14 +114,36 @@ export const processRadialElems = (rawNodes, rawEdges, rootId, positions, seedPo
       },
       position: { ...seedPosition(positions, n.id, seedPos, 20) },
     })
-    nodeIds.add(n.id)
   })
 
   edges.forEach((e) => {
-    if (!clusteredEdgeIds.has(e.id) && nodeIds.has(e.from) && nodeIds.has(e.to)) {
-      elems.push({ group: 'edges', data: { ...e, originalId: e.id } })
+    if (clusteredEdgeIds.has(e.id)) return
+    const source = e.fromRel ? midIdOf(e.fromRel) : e.from
+    const target = e.toRel ? midIdOf(e.toRel) : e.to
+    if (!midIds.has(e.id)) {
+      elems.push({ group: 'edges', data: { ...e, source, target, originalId: e.id } })
+      return
     }
+    const midId = midIdOf(e.id)
+    const ends = [positions[source], positions[target]]
+    const center = ends.every(Boolean) ? { x: (ends[0].x + ends[1].x) / 2, y: (ends[0].y + ends[1].y) / 2 } : seedPos
+    elems.push({
+      group: 'nodes',
+      data: {
+        ...omit(e, ['source', 'target']),
+        id: midId,
+        originalId: e.id,
+        isJunction: true,
+        displayLabel: toDisplayLabel(e.label),
+      },
+      position: { ...seedPosition(positions, midId, center, 0) },
+    })
+    elems.push({ group: 'edges', data: { ...e, id: `head-${e.id}`, source, target: midId, originalId: e.id, isSplit: true } })
+    elems.push({
+      group: 'edges',
+      data: { ...e, id: `tail-${e.id}`, source: midId, target, originalId: e.id, isSplit: true, isTail: true },
+    })
   })
 
-  return elems.filter((el) => el.group === 'nodes' || (nodeIds.has(el.data.source) && nodeIds.has(el.data.target)))
+  return pruneDangling(elems)
 }

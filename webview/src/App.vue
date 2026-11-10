@@ -2,7 +2,7 @@
 import {
   X,
   Waypoints,
-  Network,
+  ChevronsDown,
   CornerRightUp,
   Crosshair,
   Copy,
@@ -13,22 +13,38 @@ import {
   Link2,
   GitCompareArrows,
   Route,
-  Maximize2,
-  Minimize2,
+  Fullscreen,
+  Minimize,
+  Link,
+  Unlink,
+  GitFork,
+  AppWindow,
+  Pencil,
+  PackagePlus,
+  Trash2,
+  Undo2,
 } from '@lucide/vue'
 import { onMessage } from './api.js'
 import { useGraphExplorer } from './composables/useGraphExplorer.js'
 import { useMqlConsole } from './composables/useMqlConsole.js'
+import { useMinimapLayout } from './composables/useMinimapLayout.js'
 import GraphToolbar from './components/GraphToolbar.vue'
 import SearchPanel from './components/SearchPanel.vue'
 import RelationPanel from './components/RelationPanel.vue'
 import DetailPanel from './components/DetailPanel.vue'
 import GraphTooltip from './components/GraphTooltip.vue'
 import GraphMinimap from './components/GraphMinimap.vue'
+import BoxResizeHandles from './components/BoxResizeHandles.vue'
+import GraphNotice from './components/GraphNotice.vue'
 import ContextMenu from './components/ContextMenu.vue'
 import MqlConsole from './components/MqlConsole.vue'
 import ExpandDialog from './components/ExpandDialog.vue'
 import CompareDialog from './components/CompareDialog.vue'
+import ConnectDialog from './components/ConnectDialog.vue'
+import ObjectEditDialog from './components/ObjectEditDialog.vue'
+import ObjectCreateDialog from './components/ObjectCreateDialog.vue'
+import ChangeBasketDialog from './components/ChangeBasketDialog.vue'
+import ScreenTraceDialog from './components/ScreenTraceDialog.vue'
 import ShortcutGuideDialog from './components/ShortcutGuideDialog.vue'
 
 const {
@@ -44,6 +60,7 @@ const {
   hideContextMenu,
   errorMsg,
   connection,
+  context,
   reconnect,
   isLoading,
   searchForm,
@@ -52,9 +69,19 @@ const {
   isSearching,
   isSearchPanelOpen,
   onSearch,
+  addSearchCondition,
   loadRoot,
   expand,
   clearGraph,
+  refresh,
+  loadedAt,
+  isStale,
+  notice,
+  clearNotice,
+  focusNotice,
+  highlightObjects,
+  addObjects,
+  attachConnections,
   resetView,
   fitView,
   layoutType,
@@ -77,9 +104,36 @@ const {
   compareItems,
   pinClusterMember,
   expandCluster,
+  basket,
+  stageChange,
+  stageDisconnect,
+  connectDialog,
+  submitConnect,
+  editTarget,
+  editSelected,
+  submitEdit,
+  createDialog,
+  openCreate,
+  submitCreate,
+  editPending,
+  removePending,
+  traceItem,
 } = useGraphExplorer()
 
+const { changes, isBasketOpen, transaction, finishTransaction } = basket
+
 const isMinimapOpen = useStorage('3d-mql-minimap-open', true)
+const graphPane = ref(null)
+const {
+  minimapRef,
+  minimapHandle,
+  minimapStyle,
+  minimapPosition,
+  onMinimapResize,
+  resetMinimapSize,
+  setMinimapPosition,
+  resetMinimap,
+} = useMinimapLayout(graphPane)
 const isRelationPanelOpen = useStorage('3d-mql-relation-panel-open', false)
 const { isOpen: isConsoleOpen } = useMqlConsole()
 
@@ -102,6 +156,16 @@ whenever(
 const openRootFromConsole = (id) => {
   isConsoleFullscreen.value = false
   loadRoot(id)
+}
+
+const highlightFromConsole = (ids) => {
+  isConsoleFullscreen.value = false
+  highlightObjects(ids)
+}
+
+const addFromConsole = (ids) => {
+  isConsoleFullscreen.value = false
+  addObjects(ids)
 }
 
 const toggleConsoleFullscreen = () => {
@@ -149,45 +213,87 @@ const busQueryItems = [
   queryItem('expandFrom', 'expand bus (from)'),
   queryItem('expandTo', 'expand bus (to)'),
 ]
+const pathGroup = (label) => ({
+  action: 'path',
+  label,
+  icon: Route,
+  color: copyColor,
+  children: [
+    queryItem('pathPrint', 'print bus … select'),
+    copyItem('pathExpr', 'select 식'),
+    copyItem('pathColumn', '컬럼 식 $<…>'),
+    copyItem('pathWhere', 'where 조건'),
+  ],
+})
+const impactGroup = {
+  action: 'impact',
+  label: 'Revise/Clone 영향 보기',
+  icon: GitFork,
+  color: violetColor,
+  children: [
+    { action: 'impactRevision', label: 'Revise 했을 때', icon: GitFork, color: violetColor },
+    { action: 'impactClone', label: 'Clone 했을 때', icon: Copy, color: violetColor },
+  ],
+}
+const redColor = 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/40'
+const removePendingItem = { action: 'removePending', label: '바구니에서 빼기', icon: Undo2, color: redColor }
 
 const graphMenuItems = {
   node: [
-    { action: 'expand', label: 'Expand (From)', icon: Network, color: 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/40' },
+    { action: 'expand', label: 'Expand (From)', icon: ChevronsDown, color: 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/40' },
     { action: 'whereUsed', label: 'Where Used (To)', icon: CornerRightUp, color: 'text-cyan-600 dark:text-cyan-400 hover:bg-cyan-50 dark:hover:bg-cyan-900/40' },
     { action: 'expandOptions', label: 'Expand 옵션...', icon: SlidersHorizontal, color: 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/40' },
     { action: 'setRoot', label: '기준 객체로 보기', icon: Crosshair, color: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/40' },
     linkExistingItem('Link Existing Nodes'),
+    { action: 'edit', label: '편집 (수정 문장 만들기)...', icon: Pencil, color: violetColor },
+    { action: 'createLinked', label: '새 객체 만들어 연결...', icon: PackagePlus, color: violetColor },
+    impactGroup,
+    { action: 'trace', label: '웹 화면 추적...', icon: AppWindow, color: violetColor },
+    pathGroup('기준 객체에서 여기까지의 select 식'),
     copyGroup('Copy', [
       copyItem('id', 'Object ID'),
       copyItem('tnr', 'Type Name Rev'),
       ...busQueryItems,
       queryItem('revisions', 'temp query bus (All Revisions)'),
     ]),
+    { action: 'delete', label: '삭제 문장 만들기', icon: Trash2, color: redColor },
   ],
   edge: [
     copyItem('id', 'Copy Relationship ID'),
     queryItem('printConnection', 'print connection'),
     queryItem('expandRel', 'expand bus (from, rel type)'),
     queryItem('queryConnection', 'query connection'),
+    { action: 'edit', label: '관계 속성 편집...', icon: Pencil, color: violetColor },
+    { action: 'disconnect', label: '연결 해제 문장 만들기', icon: Unlink, color: redColor },
   ],
   cluster: [copyItem('memberIds', 'Copy Member IDs'), queryItem('expandCluster', 'expand bus (rel type)')],
+  pendingNode: [{ action: 'editPending', label: '생성 문장 고치기...', icon: Pencil, color: violetColor }, removePendingItem],
+  pendingEdge: [removePendingItem],
 }
+
+const connectItem = { action: 'connect', label: '연결 문장 만들기...', icon: Link, color: violetColor }
 
 const pairMenuItems = [
   { action: 'compare', label: '두 객체 비교', icon: GitCompareArrows, color: violetColor },
   { action: 'findPath', label: '경로 찾기', icon: Route, color: violetColor },
+  connectItem,
+  pathGroup('우클릭한 객체까지의 select 식'),
 ]
 
-const multiMenuItems = (count) => [
-  linkExistingItem(`Link Existing Nodes (${count}개)`),
-  ...(count === 2 ? pairMenuItems : []),
-  copyGroup(`Copy (${count}개)`, [copyItem('id', 'Object IDs'), copyItem('tnr', 'Type Name Rev'), ...busQueryItems]),
-]
+const multiMenuItems = (targets) => {
+  const count = targets.length
+  if (targets.some((target) => target.data('isPending'))) return count === 2 ? [connectItem] : []
+  return [
+    linkExistingItem(`Link Existing Nodes (${count}개)`),
+    ...(count === 2 ? pairMenuItems : []),
+    copyGroup(`Copy (${count}개)`, [copyItem('id', 'Object IDs'), copyItem('tnr', 'Type Name Rev'), ...busQueryItems]),
+  ]
+}
 
 const contextMenuItems = computed(() => {
   const menu = contextMenu.value
   if (!menu) return []
-  return menu.kind === 'multi' ? multiMenuItems(menu.targets.length) : graphMenuItems[menu.kind]
+  return menu.kind === 'multi' ? multiMenuItems(menu.targets) : graphMenuItems[menu.kind]
 })
 </script>
 
@@ -206,9 +312,19 @@ const contextMenuItems = computed(() => {
       :isLoading="isLoading"
       :isDark="isDark"
       :connection="connection"
+      :context="context"
+      :loadedAt="loadedAt"
+      :isStale="isStale"
+      :changeCount="changes.length"
+      :minimapPosition="minimapPosition"
       :history="rootHistory"
       :historyIndex="historyIndex"
       @search="onSearch"
+      @refresh="refresh"
+      @basket="isBasketOpen = true"
+      @create="openCreate()"
+      @minimapPosition="setMinimapPosition"
+      @resetMinimap="resetMinimap"
       @resetView="resetView"
       @fit="fitView"
       @clear="clearGraph"
@@ -248,6 +364,7 @@ const contextMenuItems = computed(() => {
       </Transition>
       <div class="flex-1 h-full min-w-0 flex flex-col">
         <div
+          ref="graphPane"
           :class="
             isGraphFullscreen
               ? 'fixed inset-0 z-40 animate-zoom-in'
@@ -265,16 +382,59 @@ const contextMenuItems = computed(() => {
             @click="toggleGraphFullscreen()"
             @mouseenter="hideTooltip"
           >
-            <Minimize2 v-if="isGraphFullscreen" :size="14" />
-            <Maximize2 v-else :size="14" />
+            <Minimize v-if="isGraphFullscreen" :size="14" />
+            <Fullscreen v-else :size="14" />
           </button>
+          <Transition name="fade">
+            <GraphNotice
+              v-if="notice"
+              :notice="notice"
+              @focus="focusNotice"
+              @close="clearNotice"
+              @mouseenter="hideTooltip"
+            />
+          </Transition>
+          <Transition name="fade">
+            <div
+              v-if="transaction"
+              class="absolute top-2 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 flex items-center gap-2 rounded-lg border border-amber-300 dark:border-amber-700 shadow-md text-xs bg-amber-50/95 dark:bg-[#3b3220]/95 text-amber-800 dark:text-amber-200"
+              @mouseenter="hideTooltip"
+            >
+              <span class="font-semibold">트랜잭션 미리보기 중</span>
+              <span class="tabular-nums">{{ transaction.remaining }}초 뒤 자동 abort</span>
+              <button
+                class="h-6 px-2 rounded-md border-none bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer"
+                @click="finishTransaction('commit')"
+              >
+                Commit
+              </button>
+              <button
+                class="h-6 px-2 rounded-md border-none bg-red-600 hover:bg-red-700 text-white font-semibold cursor-pointer"
+                @click="finishTransaction('abort')"
+              >
+                Abort
+              </button>
+            </div>
+          </Transition>
           <Transition name="fade">
             <div
               v-if="isMinimapOpen && hasElements"
-              class="absolute bottom-2 right-2 z-10 w-60 h-44 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90"
+              ref="minimapRef"
+              class="absolute z-10 flex flex-col rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90"
+              :style="minimapStyle"
               @mouseenter="hideTooltip"
             >
-              <GraphMinimap :cy="cyRef" :isDark="isDark" @fit="fitView" />
+              <div
+                ref="minimapHandle"
+                class="h-4 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing bg-gray-200/60 dark:bg-white/5 hover:bg-gray-300/60 dark:hover:bg-white/10 transition-colors"
+                title="끌어서 옮기기 · 툴바 미니맵 버튼 우클릭: 위치 고정"
+              >
+                <div class="w-8 h-0.5 rounded-full bg-gray-400/60 dark:bg-white/20"></div>
+              </div>
+              <div class="relative flex-1 min-h-0">
+                <GraphMinimap :cy="cyRef" :isDark="isDark" @fit="fitView" />
+              </div>
+              <BoxResizeHandles @start="onMinimapResize" @reset="resetMinimapSize" />
             </div>
           </Transition>
           <div
@@ -289,7 +449,13 @@ const contextMenuItems = computed(() => {
           </div>
         </div>
         <Transition :name="isConsoleFullscreen ? 'fade' : 'dock-bottom'">
-          <MqlConsole v-if="isConsoleOpen" v-model:fullscreen="isConsoleFullscreen" @openRoot="openRootFromConsole" />
+          <MqlConsole
+            v-if="isConsoleOpen"
+            v-model:fullscreen="isConsoleFullscreen"
+            @openRoot="openRootFromConsole"
+            @highlight="highlightFromConsole"
+            @add="addFromConsole"
+          />
         </Transition>
       </div>
       <DetailPanel
@@ -304,11 +470,18 @@ const contextMenuItems = computed(() => {
         @openRoot="loadRoot"
         @pin="pinClusterMember"
         @expandCluster="expandCluster"
+        @where="addSearchCondition"
+        @change="stageChange"
+        @edit="editSelected"
+        @editPending="editPending"
+        @removePending="removePending"
+        @disconnect="stageDisconnect"
+        @attach="attachConnections"
       />
     </div>
     <GraphTooltip v-if="tooltip" :tooltip="tooltip" />
     <ContextMenu
-      v-if="contextMenu"
+      v-if="contextMenu && contextMenuItems.length"
       :menu="contextMenu"
       :items="contextMenuItems"
       @action="onContextAction"
@@ -324,6 +497,33 @@ const contextMenuItems = computed(() => {
     </Transition>
     <Transition name="dialog">
       <CompareDialog v-if="compareItems.length === 2" :items="compareItems" @close="compareItems = []" />
+    </Transition>
+    <Transition name="dialog">
+      <ConnectDialog
+        v-if="connectDialog"
+        :items="connectDialog.items"
+        :edges="connectDialog.edges"
+        :relations="connectDialog.relations"
+        @submit="submitConnect"
+        @close="connectDialog = null"
+      />
+    </Transition>
+    <Transition name="dialog">
+      <ObjectEditDialog v-if="editTarget" :target="editTarget" @submit="submitEdit" @close="editTarget = null" />
+    </Transition>
+    <Transition name="dialog">
+      <ObjectCreateDialog
+        v-if="createDialog"
+        :options="createDialog"
+        @submit="submitCreate"
+        @close="createDialog = null"
+      />
+    </Transition>
+    <Transition name="dialog">
+      <ChangeBasketDialog v-if="isBasketOpen" :basket="basket" @close="isBasketOpen = false" />
+    </Transition>
+    <Transition name="dialog">
+      <ScreenTraceDialog v-if="traceItem" :item="traceItem" @close="traceItem = null" />
     </Transition>
     <Transition name="dialog">
       <ShortcutGuideDialog v-if="isShortcutGuideOpen" @close="isShortcutGuideOpen = false" />

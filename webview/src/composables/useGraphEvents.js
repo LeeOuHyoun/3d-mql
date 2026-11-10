@@ -1,3 +1,9 @@
+const kindOf = (target, isJunction) => {
+  if (target.data('isPending')) return target.isNode() ? 'pendingNode' : 'pendingEdge'
+  if (target.isEdge() || isJunction) return 'edge'
+  return target.data('isCluster') ? 'cluster' : 'node'
+}
+
 export function useGraphEvents() {
   const tooltip = shallowRef(null)
   const contextMenu = shallowRef(null)
@@ -33,10 +39,12 @@ export function useGraphEvents() {
     cy.on('tapstart', hideContextMenu)
     cy.on('cxttap', 'node, edge', (evt) => {
       const target = evt.target
-      if (target.id().startsWith('edge-cluster')) return
-      const selected = cy.nodes(':selected').filter((n) => !n.data('isCluster'))
-      const isMulti = target.isNode() && target.selected() && selected.length > 1
-      const kind = isMulti ? 'multi' : target.isEdge() ? 'edge' : target.data('isCluster') ? 'cluster' : 'node'
+      const isPending = !!target.data('isPending')
+      if (target.id().startsWith('edge-cluster') || (target.data('inert') && !isPending) || target.data('virtual')) return
+      const isJunction = !!target.data('isJunction')
+      const selected = cy.nodes(':selected').filter((n) => !n.data('isCluster') && !n.data('isJunction'))
+      const isMulti = target.isNode() && !isJunction && target.selected() && selected.length > 1
+      const kind = isMulti ? 'multi' : kindOf(target, isJunction)
       const rect = containerRect()
       hideTooltip()
       contextMenu.value = {

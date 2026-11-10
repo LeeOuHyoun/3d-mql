@@ -1,3 +1,8 @@
+const markStyles = (color, edgeSelector, nodeSelector) => [
+  { selector: edgeSelector, style: { 'line-color': color, 'target-arrow-color': color, width: 3 } },
+  { selector: nodeSelector, style: { 'border-color': color, 'border-width': 4, 'border-style': 'solid' } },
+]
+
 export const getCytoscapeStyle = (isDarkVal, layoutVal) => [
   {
     selector: 'node',
@@ -184,6 +189,75 @@ export const getCytoscapeStyle = (isDarkVal, layoutVal) => [
       'line-color': '#c678dd',
       'target-arrow-color': '#c678dd',
       'z-index': 999,
+    },
+  },
+  {
+    selector: 'node[?isJunction]',
+    style: {
+      shape: 'diamond',
+      width: 22,
+      height: 22,
+      padding: 0,
+      'font-size': '9px',
+      'text-valign': 'top',
+      'text-margin-y': -4,
+      color: isDarkVal ? '#abb2bf' : '#4b5563',
+      'background-color': isDarkVal ? '#5c6370' : '#9ca3af',
+      'border-width': 1,
+      'border-color': isDarkVal ? '#abb2bf' : '#4b5563',
+    },
+  },
+  {
+    selector: 'edge[?isSplit]',
+    style: {
+      label: '',
+    },
+  },
+  {
+    selector: 'edge[?isSplit][!isTail]',
+    style: {
+      'target-arrow-shape': 'none',
+    },
+  },
+  {
+    selector: 'edge[?virtual]',
+    style: {
+      'line-style': 'dotted',
+    },
+  },
+  ...markStyles(
+    '#16a34a',
+    'edge[pending = "add"], edge.diff-added, edge.impact-replicate',
+    'node[pending = "add"], node.diff-added',
+  ),
+  ...markStyles('#dc2626', 'edge[pending = "remove"], edge.diff-removed', 'node[pending = "remove"], node.diff-removed'),
+  ...markStyles(
+    '#d97706',
+    'edge[pending = "change"], edge.impact-float',
+    'node[pending = "change"], node.diff-changed',
+  ),
+  {
+    selector: 'edge[pending = "add"], edge[pending = "remove"], edge.diff-removed',
+    style: {
+      'line-style': 'dashed',
+    },
+  },
+  {
+    selector: 'node[pending = "add"], node[pending = "remove"], node.diff-removed',
+    style: {
+      'border-style': 'dashed',
+    },
+  },
+  {
+    selector: '.diff-removed',
+    style: {
+      opacity: 0.55,
+    },
+  },
+  {
+    selector: 'edge.impact-none, edge.impact-unknown',
+    style: {
+      opacity: 0.35,
     },
   },
   {

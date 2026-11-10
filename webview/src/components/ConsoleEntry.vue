@@ -1,14 +1,17 @@
 <script setup>
-import { Play, Copy, Check, FileText, ChevronRight, Table2 } from '@lucide/vue'
+import { Play, Copy, Check, FileText, ChevronRight, Table2, Highlighter, CirclePlus } from '@lucide/vue'
+import { uniq } from 'lodash-es'
 import { useMqlConsole } from '../composables/useMqlConsole.js'
-import { gridOf, gridTsv } from '../console/mqlResult.js'
+import { gridOf, gridTsv, OBJECT_ID_PATTERN } from '../console/mqlResult.js'
 import ConsoleText from './ConsoleText.vue'
 
 const props = defineProps({
   entry: { type: Object, required: true },
   findRegex: { type: RegExp, default: null },
 })
-const emit = defineEmits(['objectId'])
+const emit = defineEmits(['objectId', 'highlight', 'add'])
+
+const objectIds = computed(() => uniq(props.entry.output.match(OBJECT_ID_PATTERN) ?? []))
 
 const { run, openInEditor } = useMqlConsole()
 
@@ -55,6 +58,22 @@ const cellClass = 'px-2 py-0.5 border border-gray-200 dark:border-[#3e4451] text
         <Table2 :size="12" />
       </button>
       <span class="shrink-0 flex invisible group-hover:visible">
+        <template v-if="objectIds.length">
+          <button
+            :class="iconBtnClass"
+            :title="`결과의 ID ${objectIds.length}개를 그래프에서 강조`"
+            @click="emit('highlight', objectIds)"
+          >
+            <Highlighter :size="12" />
+          </button>
+          <button
+            :class="iconBtnClass"
+            :title="`결과의 객체 ${objectIds.length}개를 그래프에 추가 (기준 객체 유지)`"
+            @click="emit('add', objectIds)"
+          >
+            <CirclePlus :size="12" />
+          </button>
+        </template>
         <button :class="iconBtnClass" title="다시 실행" @click="run(props.entry.command)">
           <Play :size="12" />
         </button>

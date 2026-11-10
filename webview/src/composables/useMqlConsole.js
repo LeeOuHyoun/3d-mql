@@ -58,6 +58,7 @@ const run = async (command = input.value) => {
     pending.value--
     runCount.value++
   }
+  return entry
 }
 
 const clear = () => {

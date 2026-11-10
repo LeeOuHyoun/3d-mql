@@ -4,7 +4,7 @@ import dagre from 'cytoscape-dagre'
 import { debounce, isEqual, partition, uniqBy } from 'lodash-es'
 import { getCytoscapeStyle } from '@/graph/graphStyles.js'
 import { getLayoutOptions } from '@/graph/graphLayouts.js'
-import { processRadialElems } from '@/graph/graphDataProcessor.js'
+import { processRadialElems, toDisplayLabel } from '@/graph/graphDataProcessor.js'
 import { useGraphEvents } from './useGraphEvents.js'
 
 cytoscape.use(fcose)
@@ -18,6 +18,8 @@ const ANIMATION_MS = 400
 const ANIMATION_EASING = 'ease-out-cubic'
 const ANIMATE_MAX_NODES = 300
 const DOCK_ANIMATION_MS = 200
+const PENDING_OFFSET_Y = 110
+const PENDING_SPREAD = 160
 
 export function useGraphCytoscape(isDark, lastExpansionMode) {
   const cyRef = shallowRef(null)
@@ -153,7 +155,19 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     })
   }
 
-  const syncGraph = (rawNodes, rawEdges, rootId, layout = null) => {
+  const pendingPosition = (id, overlay, positions) => {
+    if (positions[id]) return positions[id]
+    const anchorId = overlay.edges
+      .map((edge) => (edge.source === id ? edge.target : edge.target === id ? edge.source : null))
+      .find((other) => other && positions[other])
+    const { x1, y1, x2, y2 } = cyRef.value.extent()
+    const seed = anchorId
+      ? { x: positions[anchorId].x, y: positions[anchorId].y + PENDING_OFFSET_Y }
+      : { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }
+    return { x: seed.x + (Math.random() - 0.5) * PENDING_SPREAD, y: seed.y }
+  }
+
+  const syncGraph = (rawNodes, rawEdges, rootId, layout = null, overlay = { nodes: [], edges: [], pending: {} }) => {
     if (!cyRef.value) return
     stopLayout()
     clearPath()
@@ -165,6 +179,23 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       CLUSTER_THRESHOLD,
       lastExpandedNodeId: lastExpandedNodeId.value,
       lastExpansionMode: lastExpansionMode.value,
+    })
+    const pendingData = { inert: true, isPending: true }
+    overlay.nodes.forEach((node) =>
+      elems.push({
+        group: 'nodes',
+        data: { ...node, ...pendingData, originalId: node.id, displayLabel: toDisplayLabel(node.label) },
+        position: { ...pendingPosition(node.id, overlay, positions) },
+      }),
+    )
+    const ids = new Set(elems.map((el) => el.data.id))
+    overlay.edges
+      .filter((edge) => ids.has(edge.source) && ids.has(edge.target))
+      .forEach((edge) =>
+        elems.push({ group: 'edges', data: { ...edge, ...pendingData, originalId: edge.id, displayName: edge.label } }),
+      )
+    elems.forEach((el) => {
+      el.data.pending = overlay.pending[el.data.originalId] || ''
     })
     updateElements(elems)
     applyFilter()
@@ -249,20 +280,100 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   const clearPath = () =>
     cyRef.value?.elements('.path-match, .path-dimmed').removeClass('path-match path-dimmed')
 
-  const findPath = (sourceId, targetId) => {
-    if (!cyRef.value) return false
-    clearPath()
-    const { found, path } = cyRef.value.elements(':visible').aStar({
-      root: cyRef.value.getElementById(sourceId),
-      goal: cyRef.value.getElementById(targetId),
+  const shortestPath = (sourceId, targetId) => {
+    const cy = cyRef.value
+    if (!cy) return null
+    const { found, path } = cy.elements(':visible').aStar({
+      root: cy.getElementById(sourceId),
+      goal: cy.getElementById(targetId),
     })
-    if (!found) return false
+    return found ? path : null
+  }
+
+  const markElements = (elements) => {
     cyRef.value.batch(() => {
       cyRef.value.elements().addClass('path-dimmed')
-      path.removeClass('path-dimmed').addClass('path-match')
+      elements.removeClass('path-dimmed').addClass('path-match')
     })
-    animateViewport(fitViewport(path.nodes(), getPositions()))
-    return true
+    animateViewport(fitViewport(elements.nodes().union(elements.edges().connectedNodes()), getPositions()))
+  }
+
+  const findPath = (sourceId, targetId) => {
+    clearPath()
+    const path = shortestPath(sourceId, targetId)
+    if (path) markElements(path)
+    return !!path
+  }
+
+  const pathExpression = (sourceId, targetId) => {
+    const path = shortestPath(sourceId, targetId)
+    const isUnreal = (el) => el.data('isJunction') || el.data('isSplit') || el.data('inert') || el.data('virtual')
+    if (!path || path.some(isUnreal)) return ''
+    let at = sourceId
+    return path
+      .edges()
+      .map((edge) => {
+        const isForward = edge.data('source') === at
+        at = isForward ? edge.data('target') : edge.data('source')
+        return isForward ? `from[${edge.data('label')}].to` : `to[${edge.data('label')}].from`
+      })
+      .join('.')
+  }
+
+  const elementsOf = (ids) => {
+    const wanted = new Set(ids)
+    return cyRef.value.elements().filter((el) => wanted.has(el.data('originalId')))
+  }
+
+  const highlightIds = (ids) => {
+    const wanted = new Set(ids)
+    const isMember = (el) => el.data('childNodeIds')?.some((id) => wanted.has(id))
+    const matched = cyRef.value.elements().filter((el) => wanted.has(el.data('originalId')) || isMember(el))
+    clearPath()
+    if (matched.length) markElements(matched)
+  }
+
+  const captureGhosts = (ids) => {
+    const removed = elementsOf(ids)
+    const ghostId = (id) => (removed.getElementById(id).length ? `ghost-${id}` : id)
+    return removed.map((el) => ({
+      group: el.group(),
+      data: {
+        ...el.data(),
+        id: ghostId(el.id()),
+        inert: true,
+        ...(el.isEdge() && { source: ghostId(el.data('source')), target: ghostId(el.data('target')) }),
+      },
+      ...(el.isNode() && { position: { ...el.position() } }),
+      classes: 'diff-removed',
+      selectable: false,
+    }))
+  }
+
+  const markDiff = ({ added, changed }, ghosts) => {
+    const cy = cyRef.value
+    const [nodes, edges] = partition(ghosts, { group: 'nodes' })
+    cy.batch(() => {
+      cy.add(nodes)
+      cy.add(edges.filter((el) => cy.getElementById(el.data.source).length && cy.getElementById(el.data.target).length))
+      elementsOf(added).addClass('diff-added')
+      elementsOf(changed).addClass('diff-changed')
+    })
+  }
+
+  const markImpact = (rules) => {
+    cyRef.value.batch(() =>
+      Object.entries(rules).forEach(([id, rule]) => cyRef.value.getElementById(id).addClass(`impact-${rule}`)),
+    )
+  }
+
+  const clearMarks = () => {
+    const cy = cyRef.value
+    if (!cy) return
+    cy.batch(() => {
+      cy.elements('.diff-removed').remove()
+      cy.elements().removeClass('diff-added diff-changed impact-float impact-replicate impact-none impact-unknown')
+    })
   }
 
   const destroyCy = () => {
@@ -332,6 +443,12 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     fitView,
     focusElement,
     findPath,
+    pathExpression,
+    highlightIds,
+    captureGhosts,
+    markDiff,
+    markImpact,
+    clearMarks,
     layoutType,
     destroyCy,
     toggleCluster,

@@ -138,7 +138,9 @@ export class MqlClient {
       await this.start();
       if (!exclusive) return this.enqueue(text);
       await this.drain();
-      return this.learn(text);
+      const output = await this.learn(text);
+      this.notifyReady();
+      return output;
     });
     if (exclusive) this.gate = task.catch(() => undefined);
     return task;
@@ -170,7 +172,11 @@ export class MqlClient {
     this.startWaiter = undefined;
     await this.learn(withSemicolon(this.contextCommand()));
     this.log(`marker=${JSON.stringify(this.marker)}`);
-    this.onStatus('ready');
+    this.notifyReady();
+  }
+
+  private notifyReady() {
+    this.onStatus('ready', this.marker?.join(' '));
   }
 
   private enqueue(command: string) {

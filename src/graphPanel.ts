@@ -2,16 +2,33 @@ import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { MqlClient, type ClientStatus } from './mqlClient';
 import {
+  attributeInfo,
+  buildChange,
   buildQueryText,
   expandObject,
+  forgetSymbolics,
+  listNames,
+  lookupSymbolics,
+  policyStates,
+  previewDefinition,
+  printAccess,
   printConnection,
+  printConnectionLinks,
   printObject,
   printObjectExtra,
+  printRelationship,
+  printTriggers,
+  relationshipAttributes,
   searchObjects,
+  traceScreen,
+  typeChain,
+  typeInfo,
+  type ChangeParams,
   type Direction,
   type ExpandOptions,
   type QueryTarget,
   type SearchParams,
+  type TriggerSource,
 } from './mqlCommands';
 
 type Message =
@@ -100,7 +117,7 @@ export class GraphPanel {
     }
   }
 
-  private handle(method: string, params: Record<string, unknown>) {
+  private async handle(method: string, params: Record<string, unknown>) {
     const id = String(params.id ?? '');
     if (method === 'search') {
       const limit = vscode.workspace.getConfiguration('3d-mql').get<number>('searchLimit', 200);
@@ -110,7 +127,22 @@ export class GraphPanel {
     if (method === 'object') return printObject(this.client, id);
     if (method === 'objectExtra') return printObjectExtra(this.client, id);
     if (method === 'connection') return printConnection(this.client, id);
-    if (method === 'run') return this.client.run(String(params.command ?? ''));
+    if (method === 'run') return this.run(String(params.command ?? ''));
+    if (method === 'change') return buildChange(params as ChangeParams);
+    if (method === 'access') return printAccess(this.client, id, String(params.user ?? ''));
+    if (method === 'relationship') return printRelationship(this.client, id);
+    if (method === 'typeChain') return typeChain(this.client, id);
+    if (method === 'typeInfo') return typeInfo(this.client, id);
+    if (method === 'attributes') return attributeInfo(this.client, params.names as string[]);
+    if (method === 'policyStates') return policyStates(this.client, id);
+    if (method === 'relationshipAttributes') return relationshipAttributes(this.client, id);
+    if (method === 'list') return listNames(this.client, String(params.kind ?? ''));
+    if (method === 'triggers') return printTriggers(this.client, params as TriggerSource);
+    if (method === 'symbolics') return lookupSymbolics(this.client, params.names as string[]);
+    if (method === 'connectionLinks') return printConnectionLinks(this.client, id);
+    if (method === 'trace') return traceScreen(this.client, id, String(params.type ?? ''));
+    if (method === 'preview') return previewDefinition(this.client, id, String(params.kind), String(params.name));
+    if (method === 'openJpo') return this.openJpo(String(params.program ?? ''), String(params.method ?? ''));
     if (method === 'openDocument') return this.openDocument(String(params.content ?? ''));
     if (method === 'keybindings') return Promise.resolve(this.keybindings());
     if (method === 'openKeybindings') {
@@ -118,6 +150,11 @@ export class GraphPanel {
     }
     if (queryMethods.includes(method)) return this.query(method, String(params.action), params.targets as QueryTarget[]);
     return Promise.reject(new Error(`알 수 없는 요청입니다: ${method}`));
+  }
+
+  private run(command: string) {
+    if (/\bproperty\b/i.test(command)) forgetSymbolics(this.client);
+    return this.client.run(command);
   }
 
   private async query(method: string, action: string, targets: QueryTarget[]) {
@@ -140,6 +177,21 @@ export class GraphPanel {
   private async openDocument(content: string) {
     const document = await vscode.workspace.openTextDocument({ content });
     await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+  }
+
+  private async openJpo(program: string, method: string) {
+    const [file] = await vscode.workspace.findFiles(`**/${program}_mxJPO.java`, '**/node_modules/**', 1);
+    if (!file) throw new Error(`워크스페이스에서 ${program}_mxJPO.java 파일을 찾지 못했습니다.`);
+    const document = await vscode.workspace.openTextDocument(file);
+    const name = method.replace(/[^\w$]/g, '');
+    const source = document.getText();
+    const declared = new RegExp(`\\b(?:public|protected|private)\\b[^;{(]*\\b${name}\\s*\\(`).exec(source);
+    const offset = declared ? declared.index : Math.max(source.search(new RegExp(`\\b${name}\\s*\\(`)), 0);
+    const position = document.positionAt(name ? offset : 0);
+    await vscode.window.showTextDocument(document, {
+      viewColumn: vscode.ViewColumn.Beside,
+      selection: new vscode.Range(position, position),
+    });
   }
 
   private keybindings() {

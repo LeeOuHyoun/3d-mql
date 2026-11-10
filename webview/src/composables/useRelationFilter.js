@@ -3,6 +3,7 @@ import { countBy, debounce, sortBy, uniqBy, union, without, xor } from 'lodash-e
 const palette = ['#3b82f6', '#16a34a', '#d97706', '#9333ea', '#dc2626', '#0891b2', '#c2410c', '#4f46e5', '#db2777', '#65a30d']
 const edgeKey = (e) => (e.data('isReverse') ? `rev:${e.data('label')}` : e.data('label'))
 const valueOf = (node, field) => node.data(field) || '-'
+const isObject = (node) => !node.data('isCluster') && !node.data('isJunction')
 
 export function useRelationFilter(cyRef, rootId) {
   const relations = ref([])
@@ -10,7 +11,7 @@ export function useRelationFilter(cyRef, rootId) {
   const relationFilter = ref('')
 
   const updateRelations = () => {
-    const edges = cyRef.value.edges()
+    const edges = cyRef.value.edges().filter((e) => !e.data('isTail') && !e.data('inert'))
     const counts = countBy(edges.map(edgeKey))
     const items = edges.map((e) => ({ key: edgeKey(e), label: e.data('label'), isReverse: !!e.data('isReverse') }))
     relations.value = sortBy(uniqBy(items, 'key'), ['label', 'isReverse']).map((item) => ({
@@ -28,7 +29,8 @@ export function useRelationFilter(cyRef, rootId) {
       cy.elements('.filtered-out').removeClass('filtered-out')
       if (!hidden.size) return
       const edges = cy.edges().filter(isHidden)
-      const nodes = cy.nodes().filter((n) => n.id() !== rootId.value && n.connectedEdges().every(isHidden))
+      const isOrphaned = (n) => n.connectedEdges().length > 0 && n.connectedEdges().every(isHidden)
+      const nodes = cy.nodes().filter((n) => n.id() !== rootId.value && isOrphaned(n))
       edges.union(nodes).addClass('filtered-out')
     })
   }
@@ -64,7 +66,7 @@ export function useRelationFilter(cyRef, rootId) {
   const applyColors = () => {
     const cy = cyRef.value
     if (!cy) return
-    const nodes = cy.nodes().filter((n) => !n.data('isCluster'))
+    const nodes = cy.nodes().filter(isObject)
     const field = colorBy.value
     if (field === 'none') {
       cy.nodes('[color]').removeData('color').updateStyle()
@@ -104,7 +106,7 @@ export function useRelationFilter(cyRef, rootId) {
     })
 
   const highlightLegend = (value) =>
-    applyHighlight((cy) => cy.nodes().filter((n) => !n.data('isCluster') && valueOf(n, colorBy.value) === value))
+    applyHighlight((cy) => cy.nodes().filter((n) => isObject(n) && valueOf(n, colorBy.value) === value))
 
   const clearHighlight = () => applyHighlight(null)
 

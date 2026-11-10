@@ -1,6 +1,7 @@
 const vscode = acquireVsCodeApi()
 const waiters = new Map()
 const listeners = new Set()
+const cache = new Map()
 let seq = 0
 
 window.addEventListener('message', ({ data }) => {
@@ -27,6 +28,22 @@ export const request = (method, params = {}) =>
     waiters.set(id, { resolve, reject })
     post({ type: 'request', id, method, params })
   })
+
+export const cachedRequest = (method, params = {}) => {
+  const key = `${method}:${JSON.stringify(params)}`
+  if (!cache.has(key)) {
+    cache.set(
+      key,
+      request(method, params).catch((e) => {
+        cache.delete(key)
+        throw e
+      }),
+    )
+  }
+  return cache.get(key)
+}
+
+export const clearRequestCache = () => cache.clear()
 
 export const onMessage = (listener) => {
   listeners.add(listener)
