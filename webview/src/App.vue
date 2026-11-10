@@ -13,6 +13,8 @@ import {
   Link2,
   GitCompareArrows,
   Route,
+  Maximize2,
+  Minimize2,
 } from '@lucide/vue'
 import { onMessage } from './api.js'
 import { useGraphExplorer } from './composables/useGraphExplorer.js'
@@ -79,6 +81,24 @@ const isMinimapOpen = useStorage('3d-mql-minimap-open', true)
 const isRelationPanelOpen = useStorage('3d-mql-relation-panel-open', false)
 const { isOpen: isConsoleOpen } = useMqlConsole()
 
+const fullscreenPane = ref('')
+const paneFullscreen = (pane) =>
+  computed({
+    get: () => fullscreenPane.value === pane,
+    set: (value) => (fullscreenPane.value = value ? pane : ''),
+  })
+const isGraphFullscreen = paneFullscreen('graph')
+const isConsoleFullscreen = paneFullscreen('console')
+const toggleGraphFullscreen = useToggle(isGraphFullscreen)
+
+const toggleConsoleFullscreen = () => {
+  isConsoleOpen.value = true
+  isConsoleFullscreen.value = !isConsoleFullscreen.value
+}
+
+onKeyStroke('Escape', () => (fullscreenPane.value = ''))
+whenever(() => !isConsoleOpen.value, () => (isConsoleFullscreen.value = false))
+
 const shortcuts = {
   clear: clearGraph,
   fit: fitView,
@@ -88,6 +108,8 @@ const shortcuts = {
   console: useToggle(isConsoleOpen),
   back: goBack,
   forward: goForward,
+  graphFullscreen: toggleGraphFullscreen,
+  consoleFullscreen: toggleConsoleFullscreen,
 }
 
 tryOnScopeDispose(onMessage((message) => message?.type === 'shortcut' && shortcuts[message.name]?.()))
@@ -178,7 +200,7 @@ const contextMenuItems = computed(() => {
     />
     <div
       v-if="errorMsg"
-      class="absolute top-14 left-4 right-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs rounded-xl z-30 shadow-xl backdrop-blur-md flex items-center gap-2"
+      class="absolute top-14 left-4 right-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs rounded-xl z-50 shadow-xl backdrop-blur-md flex items-center gap-2"
     >
       <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0"></div>
       <span class="flex-1 whitespace-pre-wrap break-all"><span class="font-semibold">Error:</span> {{ errorMsg }}</span>
@@ -200,12 +222,21 @@ const contextMenuItems = computed(() => {
       />
       <RelationPanel v-if="isRelationPanelOpen" :state="relationFilterState" @close="isRelationPanelOpen = false" />
       <div class="flex-1 h-full min-w-0 flex flex-col">
-        <div class="flex-1 min-h-0 relative">
+        <div :class="isGraphFullscreen ? 'fixed inset-0 z-40' : 'flex-1 min-h-0 relative'">
           <div
             ref="cyContainer"
             class="w-full h-full outline-none select-none overflow-hidden bg-white dark:bg-[#282c34]"
             @mouseleave="hideTooltip"
           ></div>
+          <button
+            class="absolute top-2 right-2 z-10 h-7 w-7 flex items-center justify-center rounded-md border border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#21252b]/90 text-gray-500 dark:text-[#abb2bf] hover:text-[#61afef] cursor-pointer"
+            :title="isGraphFullscreen ? '전체 화면 종료 (Esc)' : '그래프 전체 화면 (Ctrl+Alt+G)'"
+            @click="toggleGraphFullscreen()"
+            @mouseenter="hideTooltip"
+          >
+            <Minimize2 v-if="isGraphFullscreen" :size="14" />
+            <Maximize2 v-else :size="14" />
+          </button>
           <div
             v-if="isMinimapOpen && hasElements"
             class="absolute bottom-2 right-2 z-10 w-60 h-44 rounded-lg overflow-hidden border border-black/10 dark:border-white/10 shadow-md bg-white/90 dark:bg-[#282c34]/90"
@@ -224,7 +255,7 @@ const contextMenuItems = computed(() => {
             <div>Ctrl/Shift+클릭 · Shift+드래그: 다중 선택</div>
           </div>
         </div>
-        <MqlConsole v-if="isConsoleOpen" />
+        <MqlConsole v-if="isConsoleOpen" v-model:fullscreen="isConsoleFullscreen" />
       </div>
       <DetailPanel
         :open="isDetailPanelOpen"

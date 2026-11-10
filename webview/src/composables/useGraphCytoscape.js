@@ -307,6 +307,8 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     minimapCanvas,
     graphFilter,
     hasElements,
+    expandedClusters,
+    pinnedNodes,
     lastExpandedNodeId,
     tooltip,
     contextMenu,

@@ -67,7 +67,7 @@ export function useRelationFilter(cyRef, rootId) {
     const nodes = cy.nodes().filter((n) => !n.data('isCluster'))
     const field = colorBy.value
     if (field === 'none') {
-      cy.nodes('[color]').removeData('color')
+      cy.nodes('[color]').removeData('color').updateStyle()
       legend.value = []
       return
     }

@@ -1,8 +1,9 @@
 <script setup>
-import { X, Terminal, Play, Eraser, Copy, Check, FileText, Loader2 } from '@lucide/vue'
+import { X, Terminal, Play, Eraser, Copy, Check, FileText, Loader2, Maximize2, Minimize2 } from '@lucide/vue'
 import { useMqlConsole } from '../composables/useMqlConsole.js'
 import { usePanelResize } from '../composables/usePanelResize.js'
 
+const fullscreen = defineModel('fullscreen', { type: Boolean, default: false })
 const { isOpen, input, entries, isRunning, run, clear, openInEditor } = useMqlConsole()
 const { width: height, onResizeStart } = usePanelResize('console', 220, 'top')
 const { width: inputHeight, onResizeStart: onInputResizeStart } = usePanelResize('console-input', 92, 'top', 48, 400)
@@ -28,10 +29,12 @@ const iconBtnClass =
 
 <template>
   <div
-    class="relative shrink-0 border-t border-gray-200 dark:border-[#3e4451] bg-gray-50 dark:bg-[#21252b] flex flex-col"
-    :style="{ height: `${height}px` }"
+    class="bg-gray-50 dark:bg-[#21252b] flex flex-col"
+    :class="fullscreen ? 'fixed inset-0 z-40' : 'relative shrink-0 border-t border-gray-200 dark:border-[#3e4451]'"
+    :style="fullscreen ? undefined : { height: `${height}px` }"
   >
     <div
+      v-if="!fullscreen"
       class="absolute top-0 left-0 right-0 h-1 z-10 cursor-row-resize hover:bg-[#61afef]/40"
       @pointerdown.prevent="onResizeStart"
     ></div>
@@ -44,6 +47,10 @@ const iconBtnClass =
       <div class="flex-1"></div>
       <button :class="iconBtnClass" title="기록 지우기" @click="clear">
         <Eraser :size="14" />
+      </button>
+      <button :class="iconBtnClass" :title="fullscreen ? '전체 화면 종료 (Esc)' : '전체 화면 (Ctrl+Alt+C)'" @click="fullscreen = !fullscreen">
+        <Minimize2 v-if="fullscreen" :size="14" />
+        <Maximize2 v-else :size="14" />
       </button>
       <button :class="iconBtnClass" title="닫기" @click="isOpen = false">
         <X :size="14" />

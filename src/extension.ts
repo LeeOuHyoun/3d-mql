@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { GraphPanel } from './graphPanel';
 
-const graphCommands = ['clear', 'fit', 'relationPanel', 'detailPanel', 'minimap', 'console', 'back', 'forward'];
+const graphCommands = ['clear', 'fit', 'relationPanel', 'detailPanel', 'minimap', 'console', 'back', 'forward', 'graphFullscreen', 'consoleFullscreen'];
 
 export function activate(context: vscode.ExtensionContext) {
   const status = vscode.window.createStatusBarItem('3d-mql.open', vscode.StatusBarAlignment.Left, 99);

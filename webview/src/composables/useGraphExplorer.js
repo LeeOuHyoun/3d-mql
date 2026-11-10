@@ -18,6 +18,8 @@ export function useGraphExplorer() {
     minimapCanvas,
     graphFilter,
     hasElements,
+    expandedClusters,
+    pinnedNodes,
     lastExpandedNodeId,
     tooltip,
     contextMenu,
@@ -58,7 +60,7 @@ export function useGraphExplorer() {
   const rootItem = shallowRef(null)
   const isLoading = ref(false)
   const relationFilterState = useRelationFilter(cyRef, rootId)
-  const { hiddenRelations, resetRelations, refreshRelations } = relationFilterState
+  const { hiddenRelations, relationFilter, resetRelations, refreshRelations } = relationFilterState
 
   const toNode = (o) => ({
     id: o.id,
@@ -232,7 +234,7 @@ export function useGraphExplorer() {
   const selectedItem = ref(null)
   const detail = ref(null)
   const isDetailLoading = ref(false)
-  const isDetailPanelOpen = ref(true)
+  const isDetailPanelOpen = useStorage('3d-mql-detail-panel-open', true)
   const detailCache = new Map()
   let detailTarget = null
   let isDetailBusy = false
@@ -392,24 +394,39 @@ export function useGraphExplorer() {
     else if (action === 'findPath') showPath(menu.targets.map((t) => t.id()))
   }
 
-  const persist = debounce(
-    () =>
-      setState({
-        rawNodes,
-        rawEdges,
-        rootId: rootId.value,
-        searchForm: { ...searchForm },
-        searchResults: searchResults.value,
-        searchLimit: searchLimit.value,
-        isSearchPanelOpen: isSearchPanelOpen.value,
-        hiddenRelations: hiddenRelations.value,
-        rootHistory: rootHistory.value,
-        historyIndex: historyIndex.value,
-      }),
-    300,
-  )
+  const persist = debounce(() => {
+    const cy = cyRef.value
+    setState({
+      rawNodes,
+      rawEdges,
+      rootId: rootId.value,
+      searchForm: { ...searchForm },
+      searchResults: searchResults.value,
+      searchLimit: searchLimit.value,
+      isSearchPanelOpen: isSearchPanelOpen.value,
+      hiddenRelations: hiddenRelations.value,
+      relationFilter: relationFilter.value,
+      graphFilter: graphFilter.value,
+      expandedClusters: [...expandedClusters],
+      pinnedNodes: [...pinnedNodes],
+      rootHistory: rootHistory.value,
+      historyIndex: historyIndex.value,
+      detailId: selectedItem.value?.id,
+      positions: cy ? Object.fromEntries(cy.nodes().map((n) => [n.id(), n.position()])) : null,
+      viewport: cy ? { zoom: cy.zoom(), pan: cy.pan() } : null,
+    })
+  }, 300)
 
   useEventListener(window, 'pagehide', () => persist.flush())
+  watch([searchForm, isSearchPanelOpen, hiddenRelations, relationFilter, graphFilter, selectedItem], persist)
+
+  const restoreLayout = ({ positions, viewport, detailId }) => {
+    const cy = cyRef.value
+    cy.batch(() => cy.nodes().forEach((n) => positions[n.id()] && n.position(positions[n.id()])))
+    if (viewport) cy.viewport(viewport)
+    const el = detailId && cy.getElementById(detailId)
+    if (el?.length) showDetail(el)
+  }
 
   const restore = () => {
     const saved = getState()
@@ -422,13 +439,23 @@ export function useGraphExplorer() {
     searchLimit.value = saved.searchLimit
     isSearchPanelOpen.value = saved.isSearchPanelOpen
     hiddenRelations.value = saved.hiddenRelations ?? []
+    relationFilter.value = saved.relationFilter ?? ''
+    graphFilter.value = saved.graphFilter ?? ''
+    saved.expandedClusters?.forEach((key) => expandedClusters.add(key))
+    saved.pinnedNodes?.forEach((id) => pinnedNodes.add(id))
     rootHistory.value = saved.rootHistory ?? []
     historyIndex.value = saved.historyIndex ?? -1
-    doSyncGraph({ animate: false, fit: true })
+    if (!saved.positions) {
+      doSyncGraph({ animate: false, fit: true })
+      return
+    }
+    doSyncGraph(null)
+    restoreLayout(saved)
   }
 
   onMounted(() => {
     initCytoscape({ onNodeDblTap, onElementTap, onSelect: onSelectionChange, onUnselect: onSelectionChange })
+    cyRef.value?.on('layoutstop dragfree viewport', persist)
     restore()
   })
   onBeforeUnmount(destroyCy)
