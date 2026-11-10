@@ -4,6 +4,11 @@ const BUS_HEAD = ['type', 'name', 'revision']
 
 export const OBJECT_ID_PATTERN = /\b\d+\.\d+\.\d+\.\d+\b/g
 
+const ERROR_LINE =
+  /^\s*(?:(?:System\s+|MQL\s+|Connect\s+|Syntax\s+|Parse\s+|Database\s+|Severe\s+|Fatal\s+)?Error(?:\s*:|\s+#\d+)|#\d{4,}\s*:)/i
+const WARNING_LINE = /^\s*(?:Warning\s*:|#\d+\s*:\s*Warning\b)/i
+const KEY_LINE = /^(\s*[A-Za-z0-9_.\-[\]]+\s*=\s*)(.+)$/
+
 const dumpSeparator = (command) => {
   const match = command.match(/\bdump\b(?:\s+(?:'([^']*)'|"([^"]*)"|([^\s;'"]+)))?/i)
   if (!match) return ''
@@ -84,6 +89,26 @@ export const buildFindRegex = (query, { matchCase, useRegex }) => {
   } catch {
     return null
   }
+}
+
+export const toneParts = (text) => {
+  const parts = []
+  const add = (value, tone) => {
+    const last = parts.at(-1)
+    if (last?.tone === tone) last.text += value
+    else parts.push({ text: value, tone })
+  }
+  text.split('\n').forEach((line, index) => {
+    if (index) add('\n', '')
+    const pair = KEY_LINE.exec(line)
+    if (ERROR_LINE.test(line)) add(line, 'error')
+    else if (WARNING_LINE.test(line)) add(line, 'warn')
+    else if (pair) {
+      add(pair[1], 'key')
+      add(pair[2], '')
+    } else add(line, '')
+  })
+  return parts
 }
 
 export const splitByPattern = (text, pattern) => {

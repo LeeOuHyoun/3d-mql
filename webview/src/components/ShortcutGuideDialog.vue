@@ -27,6 +27,7 @@ const fixedGroups = [
     shortcuts: [
       { keys: [['Ctrl', 'Enter']], description: 'MQL 명령 실행' },
       { keys: [['Ctrl', '↑'], ['Ctrl', '↓']], description: '이전 / 다음 명령 불러오기' },
+      { keys: [['Tab'], ['Shift', 'Tab']], description: '명령 템플릿의 다음 / 이전 <…> 칸으로 이동' },
       { keys: [['Ctrl', 'F']], description: '결과에서 찾기' },
       { keys: [['Enter'], ['Shift', 'Enter']], description: '다음 / 이전 찾기 결과로 이동' },
       { keys: [['Click']], description: '결과의 Object ID 메뉴 (그래프에서 열기 · print · expand)' },

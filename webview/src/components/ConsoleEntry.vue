@@ -1,5 +1,5 @@
 <script setup>
-import { Play, Copy, Check, FileText, ChevronRight, Table2, Highlighter, CirclePlus } from '@lucide/vue'
+import { Play, Copy, Check, FileText, ChevronRight, Table2, Highlighter, CirclePlus, CircleAlert } from '@lucide/vue'
 import { uniq } from 'lodash-es'
 import { useMqlConsole } from '../composables/useMqlConsole.js'
 import { gridOf, gridTsv, OBJECT_ID_PATTERN } from '../console/mqlResult.js'
@@ -15,7 +15,9 @@ const objectIds = computed(() => uniq(props.entry.output.match(OBJECT_ID_PATTERN
 
 const { run, openInEditor } = useMqlConsole()
 
-const grid = computed(() => (props.entry.output ? gridOf(props.entry.command, props.entry.output) : null))
+const grid = computed(() =>
+  props.entry.output && !props.entry.isRunning && !props.entry.error ? gridOf(props.entry.command, props.entry.output) : null,
+)
 const isGridShown = computed(() => props.entry.isGrid && !!grid.value)
 const resultText = computed(() => props.entry.output || props.entry.error)
 const lineCount = computed(() => resultText.value.split('\n').length)
@@ -48,6 +50,9 @@ const cellClass = 'px-2 py-0.5 border border-gray-200 dark:border-[#3e4451] text
       </button>
       <span class="text-[#61afef] shrink-0">MQL&gt;</span>
       <span class="flex-1 min-w-0 whitespace-pre-wrap break-all text-gray-800 dark:text-[#abb2bf]">{{ props.entry.command }}</span>
+      <span v-if="props.entry.error" class="shrink-0 flex text-red-500" title="실패">
+        <CircleAlert :size="12" />
+      </span>
       <span class="shrink-0 text-gray-400">{{ props.entry.elapsed ? `${props.entry.elapsed}ms` : '' }}</span>
       <button
         v-if="grid"
@@ -89,7 +94,7 @@ const cellClass = 'px-2 py-0.5 border border-gray-200 dark:border-[#3e4451] text
     <div v-if="props.entry.isFolded" class="ml-4 mt-0.5 text-gray-400 italic font-sans">
       {{ props.entry.elapsed ? `결과 ${lineCount}줄 접힘` : '실행 중...' }}
     </div>
-    <pre v-else-if="props.entry.error" class="m-0 mt-0.5 whitespace-pre-wrap break-all text-red-600 dark:text-red-400"><ConsoleText
+    <pre v-else-if="props.entry.error && !props.entry.output" class="m-0 mt-0.5 whitespace-pre-wrap break-all text-red-600 dark:text-red-400"><ConsoleText
       :text="props.entry.error"
       :findRegex="props.findRegex"
       @objectId="forwardObjectId"
@@ -124,7 +129,12 @@ const cellClass = 'px-2 py-0.5 border border-gray-200 dark:border-[#3e4451] text
       v-if="props.entry.output"
       :text="props.entry.output"
       :findRegex="props.findRegex"
+      :tones="!props.entry.isRunning"
       @objectId="forwardObjectId"
     /><template v-else>{{ props.entry.elapsed ? '(결과 없음)' : '실행 중...' }}</template></pre>
+    <pre
+      v-if="!props.entry.isFolded && props.entry.output && props.entry.error && !props.entry.isFailed"
+      class="m-0 mt-0.5 whitespace-pre-wrap break-all text-red-600 dark:text-red-400"
+    >{{ props.entry.error }}</pre>
   </div>
 </template>

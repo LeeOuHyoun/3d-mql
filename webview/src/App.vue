@@ -199,6 +199,7 @@ const shortcuts = {
 }
 
 tryOnScopeDispose(onMessage((message) => message?.type === 'shortcut' && shortcuts[message.name]?.()))
+tryOnScopeDispose(onMessage((message) => message?.type === 'openRoot' && openRootFromConsole(message.id)))
 
 const copyColor = 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/40'
 const violetColor = 'text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/40'

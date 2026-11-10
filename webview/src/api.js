@@ -5,6 +5,10 @@ const cache = new Map()
 let seq = 0
 
 window.addEventListener('message', ({ data }) => {
+  if (data?.type === 'chunk') {
+    waiters.get(data.id)?.onChunk?.(data.text)
+    return
+  }
   if (data?.type !== 'response') {
     listeners.forEach((listener) => listener(data))
     return
@@ -22,10 +26,10 @@ export const getState = () => vscode.getState()
 
 export const setState = (state) => vscode.setState(state)
 
-export const request = (method, params = {}) =>
+export const request = (method, params = {}, onChunk) =>
   new Promise((resolve, reject) => {
     const id = ++seq
-    waiters.set(id, { resolve, reject })
+    waiters.set(id, { resolve, reject, onChunk })
     post({ type: 'request', id, method, params })
   })
 

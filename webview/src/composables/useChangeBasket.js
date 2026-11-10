@@ -14,6 +14,7 @@ export const isPending = (item) => item.status !== 'done'
 
 export function useChangeBasket(connection, onApplied, scriptInfo) {
   const { run, openInEditor } = useMqlConsole()
+  const runChange = (command) => run(command, { confirm: false })
   const changes = ref([])
   const isBasketOpen = ref(false)
   const isApplying = ref(false)
@@ -84,7 +85,7 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
     try {
       for (const change of pendingChanges.value) {
         if (isPreview && !transaction.value) break
-        const { error, output } = await run(change.forward)
+        const { error, output } = await runChange(change.forward)
         const createdId = change.kind === 'create' && !error ? output.match(OBJECT_ID_PATTERN)?.at(-1) : undefined
         Object.assign(change, { status: error ? 'failed' : 'done', error, createdId })
         if (createdId) createdIds.push(createdId)
@@ -112,7 +113,7 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
     const { keys } = transaction.value
     pause()
     transaction.value = null
-    const { error } = await run(`${action} transaction;`)
+    const { error } = await runChange(`${action} transaction;`)
     if (action === 'abort' || error) resetChanges(keys)
     await onApplied()
   }
@@ -128,7 +129,7 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
 
   const previewChanges = async () => {
     const keys = pendingChanges.value.map((item) => item.key)
-    const { error } = await run('start transaction;')
+    const { error } = await runChange('start transaction;')
     if (error) return
     transaction.value = { remaining: TRANSACTION_SECONDS, keys }
     await runChanges(true)

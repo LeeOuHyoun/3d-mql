@@ -3,8 +3,17 @@ import { MqlSession, type Pipe } from './session';
 export type ClientStatus = 'connecting' | 'ready' | 'failed' | 'ended';
 
 type Timer = ReturnType<typeof setTimeout>;
+type Chunk = (text: string) => void;
 type Pending = { resolve: (text: string) => void; reject: (error: Error) => void };
-type Waiter = Pending & { command: string; at: number; lines: string[]; timer?: Timer; discard?: boolean };
+type Waiter = Pending & {
+  command: string;
+  at: number;
+  lines: string[];
+  streamed: number;
+  onChunk?: Chunk;
+  timer?: Timer;
+  discard?: boolean;
+};
 type Learning = Pending & {
   command: string;
   at: number;
@@ -22,9 +31,13 @@ const learnQuietMs = 100;
 const trailingQuietMs = 30;
 const markerCommand = 'print context;';
 const promptsPattern = /MQL<\d*>/g;
-const errorPattern = /^\s*(?:System )?Error:.*$/gm;
+const errorLinePattern =
+  /^\s*(?:(?:System\s+|MQL\s+|Connect\s+|Syntax\s+|Parse\s+|Database\s+|Severe\s+|Fatal\s+)?Error(?:\s*:|\s+#\d+)|#\d{4,}\s*:)/i;
+const passwordPromptPattern = /^\s*(?:Enter\s+)?Password\s*:\s*$/i;
 const quotedPattern = /"[^"]*"|'[^']*'/g;
 const contextPattern = /(^|;)\s*(set|push|pop)\b|\bcont/i;
+const contextStatementPattern = /(?:^|;)\s*(?:set|push|pop)\s+context\b/i;
+const setContextPattern = /(?:^|;)\s*(set\s+context\b[^;]*)/gi;
 const pipes = ['out', 'err'] as const;
 
 const withSemicolon = (command: string) => {
@@ -86,6 +99,37 @@ function stripBlocks(lines: string[], block: string[], count: number) {
   return lines.slice(0, end);
 }
 
+function heldLines(lines: string[], marker: string[]) {
+  const values: { value: string; index: number }[] = [];
+  for (let index = lines.length - 1; index >= 0 && values.length < marker.length; index--) {
+    const value = lines[index].trim();
+    if (value) values.unshift({ value, index });
+  }
+  for (let size = values.length; size > 0; size--) {
+    const tail = values.slice(-size);
+    if (tail.every((item, at) => item.value === marker[at])) return lines.length - tail[0].index;
+  }
+  return 0;
+}
+
+function errorLines(text: string) {
+  const lines = text.split(/\r?\n/);
+  const last = lines.filter((line) => line.trim()).at(-1) ?? '';
+  const prompt = passwordPromptPattern.test(last) ? [last] : [];
+  return [...lines.filter((line) => errorLinePattern.test(line)), ...prompt].map((line) => line.trim());
+}
+
+const lastSetContext = (command: string) => [...command.matchAll(setContextPattern)].at(-1)?.[1];
+
+export class MqlError extends Error {
+  constructor(
+    message: string,
+    readonly output: string,
+  ) {
+    super(message);
+  }
+}
+
 export class MqlClient {
   private readonly session: MqlSession;
   private readonly remainders: Record<Pipe, string> = { out: '', err: '' };
@@ -98,6 +142,7 @@ export class MqlClient {
   private starting: Promise<void> | undefined;
   private gate: Promise<unknown> = Promise.resolve();
   private marker: string[] | undefined;
+  private lastContext = '';
 
   constructor(
     private readonly contextCommand: () => string,
@@ -131,14 +176,16 @@ export class MqlClient {
     return this.start();
   }
 
-  run(command: string): Promise<string> {
+  run(command: string, onChunk?: Chunk): Promise<string> {
     const text = withSemicolon(command);
     const exclusive = changesContext(text);
     const task = this.gate.then(async () => {
       await this.start();
-      if (!exclusive) return this.enqueue(text);
+      if (!exclusive) return this.enqueue(text, onChunk);
       await this.drain();
-      const output = await this.learn(text);
+      const output = await this.learn(text).catch((error: Error) => this.recover(text, error));
+      const context = lastSetContext(text);
+      if (context) this.lastContext = withSemicolon(context);
       this.notifyReady();
       return output;
     });
@@ -170,22 +217,34 @@ export class MqlClient {
       this.session.start();
     });
     this.startWaiter = undefined;
-    await this.learn(withSemicolon(this.contextCommand()));
+    const context = withSemicolon(this.contextCommand());
+    await this.learn(context);
+    this.lastContext = context;
     this.log(`marker=${JSON.stringify(this.marker)}`);
     this.notifyReady();
+  }
+
+  private async recover(command: string, error: Error): Promise<never> {
+    const isMqlError = error instanceof MqlError;
+    if (isMqlError && this.lastContext && contextStatementPattern.test(command)) {
+      this.log(`restore context > ${this.lastContext}`);
+      await this.learn(this.lastContext).catch(() => undefined);
+    }
+    if (isMqlError && this.starting) this.notifyReady();
+    throw error;
   }
 
   private notifyReady() {
     this.onStatus('ready', this.marker?.join(' '));
   }
 
-  private enqueue(command: string) {
+  private enqueue(command: string, onChunk?: Chunk) {
     return new Promise<string>((resolve, reject) => {
       if (!this.marker) {
         reject(new Error('MQL 세션이 준비되지 않았습니다.'));
         return;
       }
-      this.waiters.push({ command, at: Date.now(), lines: [], resolve, reject });
+      this.waiters.push({ command, at: Date.now(), lines: [], streamed: 0, onChunk, resolve, reject });
       if (!this.session.send(`${command}\n${markerCommand}`)) {
         this.waiters.pop();
         reject(new Error('MQL 명령 전송에 실패했습니다.'));
@@ -225,6 +284,7 @@ export class MqlClient {
     const lines = (this.remainders[pipe] + text).split(/\r?\n/);
     this.remainders[pipe] = lines.pop() ?? '';
     lines.forEach((line) => this.onLine(cleanLine(line)));
+    this.stream();
     if (this.learning) {
       clearTimeout(this.learnTimer);
       this.learnTimer = setTimeout(() => this.checkLearning(), learnQuietMs);
@@ -248,6 +308,20 @@ export class MqlClient {
     if (!head.discard) this.settle(head, text);
     this.arm(this.waiters[0]);
     if (!this.waiters.length) this.drainers.splice(0).forEach((resolve) => resolve());
+  }
+
+  private stream() {
+    const head = this.waiters[0];
+    if (!head?.onChunk || head.discard || !this.marker) return;
+    const end = head.lines.length - heldLines(head.lines, this.marker);
+    if (end <= head.streamed) return;
+    head.onChunk(
+      head.lines
+        .slice(head.streamed, end)
+        .map((line) => `${line}\n`)
+        .join(''),
+    );
+    head.streamed = end;
   }
 
   private scheduleFlush(pipe: Pipe) {
@@ -301,8 +375,8 @@ export class MqlClient {
   }
 
   private settle(pending: Pending, text: string) {
-    const errors = text.match(errorPattern);
-    if (errors) pending.reject(new Error(errors.map((line) => line.trim()).join('\n')));
+    const errors = errorLines(text);
+    if (errors.length) pending.reject(new MqlError(errors.join('\n'), text));
     else pending.resolve(text);
   }
 

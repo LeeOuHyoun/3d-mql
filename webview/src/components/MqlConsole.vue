@@ -21,8 +21,10 @@ import {
 } from '@lucide/vue'
 import { request } from '../api.js'
 import { useMqlConsole } from '../composables/useMqlConsole.js'
+import { useConsoleAssist } from '../composables/useConsoleAssist.js'
 import { usePanelResize } from '../composables/usePanelResize.js'
 import { buildFindRegex } from '../console/mqlResult.js'
+import ConsoleAssist from './ConsoleAssist.vue'
 import ConsoleEntry from './ConsoleEntry.vue'
 import ConsoleHistory from './ConsoleHistory.vue'
 import ContextMenu from './ContextMenu.vue'
@@ -40,6 +42,24 @@ const { width: height, onResizeStart } = usePanelResize('console', 220, 'top')
 const { width: inputHeight, onResizeStart: onInputResizeStart } = usePanelResize('console-input', 92, 'top', 48, 400)
 
 const logRef = ref(null)
+const inputRef = ref(null)
+
+const {
+  items: assistItems,
+  index: assistIndex,
+  caret: assistCaret,
+  close: closeAssist,
+  accept: acceptAssist,
+  onKeydown: onInputKeydown,
+  onInput: onInputChange,
+  onFocus: onInputFocus,
+  onBlur: onInputBlur,
+} = useConsoleAssist(inputRef)
+
+const runInput = () => {
+  closeAssist()
+  run()
+}
 
 watch(
   () => entries.value.length,
@@ -248,13 +268,18 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         @pointerdown.prevent="onInputResizeStart"
       ></div>
       <textarea
+        ref="inputRef"
         v-model="input"
         spellcheck="false"
-        placeholder="MQL 명령 입력 (Ctrl+Enter 실행 · Ctrl+↑/↓ 이전 명령)"
+        placeholder="MQL 명령 입력 (Ctrl+Enter 실행 · Ctrl+Space 제안 · Ctrl+Shift+F 포매팅 · Ctrl+↑/↓ 이전 명령)"
         class="flex-1 self-stretch px-2 py-1 font-mono text-xs rounded-md border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#282c34] text-gray-800 dark:text-[#abb2bf] outline-none focus:border-[#61afef] resize-none"
-        @keydown.ctrl.enter.prevent="run()"
+        @keydown="onInputKeydown"
+        @keydown.ctrl.enter.prevent="runInput"
         @keydown.ctrl.up.prevent="recall(1)"
         @keydown.ctrl.down.prevent="recall(-1)"
+        @input="onInputChange"
+        @focus="onInputFocus"
+        @blur="onInputBlur"
       ></textarea>
       <button
         class="h-7 px-3 flex items-center gap-1.5 rounded-md border-none bg-[#61afef] hover:bg-[#4b8bca] text-white text-xs font-semibold cursor-pointer"
@@ -270,6 +295,13 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
       :items="objectIdMenuItems"
       @action="handleObjectIdAction"
       @close="objectIdMenu = null"
+    />
+    <ConsoleAssist
+      v-if="assistItems.length"
+      :items="assistItems"
+      :index="assistIndex"
+      :caret="assistCaret"
+      @pick="acceptAssist"
     />
   </div>
 </template>

@@ -2,7 +2,7 @@
   "name": "3d-mql",
   "displayName": "3D MQL Graph",
   "description": "ENOVIA MQL로 객체와 관계를 그래프로 탐색합니다.",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -66,6 +66,14 @@
       {
         "command": "3d-mql.graph.shortcuts",
         "title": "3D MQL: 단축키 안내"
+      },
+      {
+        "command": "3d-mql.graph.suggest",
+        "title": "3D MQL: MQL 콘솔 명령 제안"
+      },
+      {
+        "command": "3d-mql.graph.format",
+        "title": "3D MQL: MQL 콘솔 입력 포매팅"
       }
     ],
     "menus": {
@@ -112,6 +120,14 @@
         },
         {
           "command": "3d-mql.graph.shortcuts",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
+        },
+        {
+          "command": "3d-mql.graph.suggest",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
+        },
+        {
+          "command": "3d-mql.graph.format",
           "when": "activeWebviewPanelId == '3d-mql.graph'"
         }
       ]
@@ -171,6 +187,16 @@
         "command": "3d-mql.graph.shortcuts",
         "key": "ctrl+shift+l",
         "when": "activeWebviewPanelId == '3d-mql.graph'"
+      },
+      {
+        "command": "3d-mql.graph.suggest",
+        "key": "ctrl+space",
+        "when": "activeWebviewPanelId == '3d-mql.graph' && 3d-mql.consoleFocus"
+      },
+      {
+        "command": "3d-mql.graph.format",
+        "key": "ctrl+shift+f",
+        "when": "activeWebviewPanelId == '3d-mql.graph' && 3d-mql.consoleFocus"
       }
     ],
     "configuration": {

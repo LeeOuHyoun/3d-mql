@@ -3,12 +3,11 @@ import { cachedRequest, clearRequestCache, getState, onMessage, post, request, s
 import { useTheme } from './useTheme.js'
 import { useGraphCytoscape } from './useGraphCytoscape.js'
 import { useRelationFilter } from './useRelationFilter.js'
-import { useMqlConsole } from './useMqlConsole.js'
+import { hasWriteStatement, useMqlConsole } from './useMqlConsole.js'
 import { isPending, pendingId, pendingKey, useChangeBasket } from './useChangeBasket.js'
 
 export const objectIdPattern = /^(\d+\.\d+\.\d+\.\d+|[0-9a-f]{32})$/i
 const plainIdPattern = /^\d+\.\d+\.\d+\.\d+$/
-const readPattern = /^(print|list|temp|expand|query|help|version|eval)\b/i
 const DETAIL_CACHE_SIZE = 300
 const ADD_LIMIT = 50
 const diffKinds = [
@@ -597,8 +596,7 @@ export function useGraphExplorer() {
   watch(runCount, () => {
     detailCache.clear()
     clearRequestCache()
-    const statements = (entries.value.at(-1)?.command ?? '').split(';').map((statement) => statement.trim())
-    if (statements.some((statement) => statement && !readPattern.test(statement))) isStale.value = true
+    if (hasWriteStatement(entries.value.at(-1)?.command ?? '')) isStale.value = true
   })
 
   const onApplied = async (createdIds = [], connected = []) => {

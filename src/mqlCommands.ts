@@ -97,9 +97,38 @@ const basicFields = ['description', 'owner'];
 const renameFields = ['name', 'revision'];
 const modifyFields = [...renameFields, ...basicFields];
 const createFields = ['current', 'owner', 'description', 'organization', 'project'];
-const listKinds = ['type', 'vault'];
+const listKinds = [
+  'type',
+  'person',
+  'policy',
+  'attribute',
+  'relationship',
+  'program',
+  'vault',
+  'role',
+  'group',
+  'association',
+  'command',
+  'menu',
+  'form',
+  'table',
+  'channel',
+  'portal',
+  'page',
+];
 const ownershipSelects = 'organization project';
 const rangeOperatorPattern = /^(?:!=|<|>|~|!~|match|nmatch|smatch|nsmatch|program|between)/i;
+const quotedTextPattern = /'[^']*'|"[^"]*"/g;
+const deletePattern = /^\s*del(?:ete)?\s/i;
+const destructivePatterns = [
+  deletePattern,
+  /^\s*(?:disconnect|demote)\s/i,
+  /^\s*mod(?:ify)?\s[\s\S]*\bremove\b/i,
+  /^\s*clear\s+(?:vault|all)\b/i,
+];
+const secretPattern = /'[^']*'|"[^"]*"|(\bpassword\s+)('[^']*'|"[^"]*"|[^\s;'"]+)/gi;
+const transactionStartPattern = /^start transaction(?: (?:read|write))?$/i;
+const transactionEndPattern = /^(?:commit|abort) transaction$/i;
 const objectSelects = [
   'type',
   'name',
@@ -526,6 +555,25 @@ export function buildChange(params: ChangeParams) {
   if (!build) throw new Error(`알 수 없는 변경 항목입니다: ${params.kind}`);
   return build(params);
 }
+
+const statementsOf = (command: string) => {
+  const bare = command.replace(quotedTextPattern, "''");
+  return [...bare.split(';'), ...bare.split(/\r?\n/)];
+};
+
+export const isDestructive = (command: string) =>
+  statementsOf(command).some((statement) => destructivePatterns.some((pattern) => pattern.test(statement)));
+
+export const hasDelete = (command: string) => statementsOf(command).some((statement) => deletePattern.test(statement));
+
+export const maskSecret = (text: string) => text.replace(secretPattern, (match: string, head?: string) => (head ? `${head}****` : match));
+
+export const transactionAfter = (command: string, active: boolean) =>
+  command.split(';').reduce((state, statement) => {
+    const text = statement.trim().replace(/\s+/g, ' ');
+    if (transactionStartPattern.test(text)) return true;
+    return transactionEndPattern.test(text) ? false : state;
+  }, active);
 
 function parseRelationship(text: string) {
   const sides: Record<'from' | 'to', Record<string, string>> = { from: {}, to: {} };
