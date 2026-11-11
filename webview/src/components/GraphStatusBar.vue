@@ -8,7 +8,6 @@ import {
   Snowflake,
   Network,
   Share2,
-  Target,
   Terminal,
   Keyboard,
   ListChecks,
@@ -36,7 +35,6 @@ const isConsoleOpen = defineModel('isConsoleOpen', { type: Boolean, default: fal
 const layoutType = defineModel('layoutType', { type: String, default: 'radial' })
 const emit = defineEmits([
   'resetView',
-  'fit',
   'toggleTheme',
   'reconnect',
   'shortcuts',
@@ -110,11 +108,8 @@ const dividerClass = 'w-px h-4 mx-1 shrink-0 bg-gray-200 dark:bg-[#3e4451]'
         <component :is="layout.icon" :size="14" />
       </button>
     </div>
-    <button :class="iconBtnClass" title="레이아웃 다시 정렬" @click="emit('resetView')">
+    <button :class="iconBtnClass" title="레이아웃 다시 정렬 · 화면 맞춤" @click="emit('resetView')">
       <RefreshCw :size="14" />
-    </button>
-    <button :class="iconBtnClass" title="화면 맞춤 (Ctrl+Alt+F)" @click="emit('fit')">
-      <Target :size="14" />
     </button>
     <div ref="minimapMenuRef" class="relative flex items-center">
       <button

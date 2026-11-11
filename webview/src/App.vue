@@ -469,7 +469,6 @@ const contextMenuItems = computed(() => {
       @minimapPosition="setMinimapPosition"
       @resetMinimap="resetMinimap"
       @resetView="resetView"
-      @fit="fitView"
       @toggleTheme="toggleTheme"
       @reconnect="reconnect"
       @shortcuts="isShortcutGuideOpen = true"
