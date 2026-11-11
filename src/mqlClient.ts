@@ -250,7 +250,7 @@ export class MqlClient {
         reject(new Error('MQL 명령 전송에 실패했습니다.'));
         return;
       }
-      this.arm(this.waiters[0]);
+      this.arm(this.waiters.find((waiter) => !waiter.discard));
     });
   }
 
