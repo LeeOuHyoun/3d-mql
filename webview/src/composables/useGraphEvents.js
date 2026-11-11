@@ -4,11 +4,15 @@ const kindOf = (target, isJunction) => {
   return target.data('isCluster') ? 'cluster' : 'node'
 }
 
+const TOOLTIP_DELAY_MS = 350
+
 export function useGraphEvents() {
   const tooltip = shallowRef(null)
   const contextMenu = shallowRef(null)
+  const { start: showLater, stop: cancelShow } = useTimeoutFn((show) => show(), TOOLTIP_DELAY_MS, { immediate: false })
 
   const hideTooltip = () => {
+    cancelShow()
     tooltip.value = null
   }
 
@@ -20,6 +24,7 @@ export function useGraphEvents() {
     const containerRect = () => container.value.getBoundingClientRect()
 
     const showNodeTooltip = (node) => {
+      if (!node.inside()) return
       const rect = containerRect()
       const box = node.renderedBoundingBox({ includeLabels: false })
       tooltip.value = { x: rect.left + (box.x1 + box.x2) / 2, y: rect.top + box.y1, data: node.data() }
@@ -29,7 +34,7 @@ export function useGraphEvents() {
     cy.on('tap', 'node, edge', onElementTap)
     cy.on('select', 'node, edge', onSelect)
     cy.on('unselect', 'node, edge', onUnselect)
-    cy.on('mouseover', 'node', (evt) => showNodeTooltip(evt.target))
+    cy.on('mouseover', 'node', (evt) => showLater(() => showNodeTooltip(evt.target)))
     cy.on('mouseout', 'node', hideTooltip)
     cy.on('grab', 'node', hideTooltip)
     cy.on('zoom pan', () => {

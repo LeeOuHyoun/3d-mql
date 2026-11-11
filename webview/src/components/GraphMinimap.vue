@@ -1,5 +1,5 @@
 <script setup>
-import { throttle } from 'lodash-es'
+import { debounce } from 'lodash-es'
 
 const props = defineProps({
   cy: { type: Object, default: null },
@@ -9,7 +9,7 @@ const emit = defineEmits(['fit'])
 
 const PADDING = 6
 const WHEEL_ZOOM_FACTOR = 1.2
-const THUMBNAIL_THROTTLE_MS = 100
+const THUMBNAIL_SETTLE_MS = 350
 const REGION_MARGIN_RATIO = 0.25
 
 const panelRef = ref(null)
@@ -54,7 +54,7 @@ const toPanelStyle = (box) => {
 const thumbnailStyle = computed(() => transform.value && toPanelStyle(thumbnail.value.box))
 const viewStyle = computed(() => transform.value && toPanelStyle(extent.value))
 
-const renderThumbnail = throttle(() => {
+const renderThumbnail = debounce(() => {
   const cy = props.cy
   if (!cy || !panelWidth.value) return
   const bb = cy.elements().boundingBox()
@@ -65,13 +65,13 @@ const renderThumbnail = throttle(() => {
   const box = { ...bb, w: Math.ceil(bb.w), h: Math.ceil(bb.h) }
   const scale = Math.min(panelWidth.value / box.w, panelHeight.value / box.h)
   thumbnail.value = { box, src: cy.png({ full: true, scale }) }
-}, THUMBNAIL_THROTTLE_MS)
+}, THUMBNAIL_SETTLE_MS)
 
 const updateExtent = () => {
   extent.value = props.cy?.extent() ?? null
 }
 
-const contentEvents = 'add remove position data class style select unselect'
+const contentEvents = 'add remove position data class select unselect'
 
 watch(
   () => props.cy,
@@ -89,7 +89,12 @@ watch(
   { immediate: true },
 )
 
-watch([() => props.isDark, panelWidth, panelHeight], () => nextTick(renderThumbnail))
+const refreshThumbnail = () => {
+  renderThumbnail()
+  if (!thumbnail.value) renderThumbnail.flush()
+}
+
+watch([() => props.isDark, panelWidth, panelHeight], () => nextTick(refreshThumbnail))
 tryOnScopeDispose(() => renderThumbnail.cancel())
 
 const isOverView = ref(false)

@@ -314,7 +314,7 @@ const contextMenuItems = computed(() => {
     <Transition name="pop">
       <div
         v-if="errorMsg"
-        class="absolute top-14 left-4 right-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs rounded-xl z-50 shadow-xl backdrop-blur-md flex items-center gap-2"
+        class="absolute top-14 left-4 right-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs rounded-xl z-[55] shadow-xl backdrop-blur-md flex items-center gap-2"
       >
         <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0"></div>
         <span class="flex-1 whitespace-pre-wrap break-all"><span class="font-semibold">Error:</span> {{ errorMsg }}</span>

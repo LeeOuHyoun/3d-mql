@@ -1,3 +1,5 @@
+export const EDGE_LENGTH = 120
+
 export const getLayoutOptions = (layoutType) => {
   if (layoutType === 'flow-tb' || layoutType === 'flow-lr') {
     return {
@@ -15,7 +17,7 @@ export const getLayoutOptions = (layoutType) => {
     quality: 'default',
     nodeDimensionsIncludeLabels: true,
     nodeRepulsion: 4500,
-    idealEdgeLength: 120,
+    idealEdgeLength: EDGE_LENGTH,
     edgeElasticity: 0.45,
     nestingFactor: 0.1,
     gravity: 0.25,

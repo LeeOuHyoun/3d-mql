@@ -125,11 +125,12 @@ export function useGraphExplorer() {
 
   const doSyncGraph = (layout = {}) => {
     clearNotice()
-    syncGraph(rawNodes, rawEdges, rootId.value, layout, basket.overlay.value)
+    const isChanged = syncGraph(rawNodes, rawEdges, rootId.value, layout, basket.overlay.value)
     rootItem.value = rawNodes[rootId.value] ?? null
     refreshRelations()
     onSelectionChange()
     persist()
+    return isChanged
   }
 
   const rawGraph = () => ({ nodes: rawNodes, edges: rawEdges })
@@ -240,7 +241,7 @@ export function useGraphExplorer() {
       await explore({ kind: 'expand', id, direction, options })
       lastExpansionMode.value = direction === 'to' ? 'backward' : 'forward'
       lastExpandedNodeId.value = id
-      doSyncGraph({ anchorId: id })
+      if (!doSyncGraph({ anchorId: id })) post({ type: 'notify', text: '새로 표시할 연결이 없습니다.' })
     } catch (e) {
       errorMsg.value = e.message
       cyRef.value?.nodes().data('isExploring', false)
@@ -394,7 +395,7 @@ export function useGraphExplorer() {
       rawNodes = after.nodes
       rawEdges = after.edges
       markLoaded()
-      doSyncGraph(idsOf('added').length ? {} : null)
+      doSyncGraph(idsOf('added').length ? { reveal: false } : null)
       if (!items.length) {
         post({ type: 'notify', text: '새로고침했습니다. 달라진 내용이 없습니다.' })
         return
@@ -792,17 +793,17 @@ export function useGraphExplorer() {
     selectedItem.value = el?.length ? toSelectedItem(el) : null
   }
 
-  const clusterAnchor = (clusterKey) => clusterKey?.split('::')[0]
+  const clusterLayout = (cluster) => ({ anchorId: cluster?.clusterKey?.split('::')[0], originId: cluster?.id })
 
   const pinClusterMember = (id) => {
     pinNode(id)
-    doSyncGraph({ anchorId: clusterAnchor(selectedItem.value?.clusterKey) })
+    doSyncGraph(clusterLayout(selectedItem.value))
     refreshSelectedCluster()
   }
 
   const expandCluster = (clusterKey) => {
     toggleCluster(clusterKey)
-    doSyncGraph({ anchorId: clusterAnchor(clusterKey) })
+    doSyncGraph(clusterLayout(selectedItem.value))
     refreshSelectedCluster()
   }
 
@@ -811,7 +812,7 @@ export function useGraphExplorer() {
     if (node.data('isJunction') || node.data('inert')) return
     if (node.data('isCluster')) {
       toggleCluster(node.data('clusterKey'))
-      doSyncGraph({ anchorId: clusterAnchor(node.data('clusterKey')) })
+      doSyncGraph(clusterLayout(node.data()))
       return
     }
     if (node.outgoers('edge').length > 0 && collapseExpandedFromNode(node)) {

@@ -4,6 +4,7 @@ import dagre from 'cytoscape-dagre'
 import { debounce, isEqual, partition, uniqBy } from 'lodash-es'
 import { getCytoscapeStyle } from '@/graph/graphStyles.js'
 import { getLayoutOptions } from '@/graph/graphLayouts.js'
+import { placeAdded } from '@/graph/graphPlacement.js'
 import { processRadialElems, toDisplayLabel } from '@/graph/graphDataProcessor.js'
 import { useGraphEvents } from './useGraphEvents.js'
 
@@ -14,6 +15,9 @@ cytoscape.warnings(false)
 const CLUSTER_THRESHOLD = 10
 const FIT_MAX_ZOOM = 1
 const FIT_PADDING = 50
+const MIN_ZOOM = 0.02
+const MAX_ZOOM = 4
+const READABLE_ZOOM = 0.75
 const ANIMATION_MS = 400
 const ANIMATION_EASING = 'ease-out-cubic'
 const ANIMATE_MAX_NODES = 300
@@ -30,14 +34,21 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   const lastExpandedNodeId = ref(null)
   const hasElements = ref(false)
   let activeLayout = null
+  let settling = null
   let wheelHandler = null
   const { tooltip, contextMenu, bindGraphEvents, hideTooltip, hideContextMenu } = useGraphEvents()
 
   const stopLayout = () => {
+    const cy = cyRef.value
+    const pending = settling
+    settling = null
     activeLayout?.stop()
     activeLayout = null
-    cyRef.value?.stop(true)
-    cyRef.value?.nodes().stop(true)
+    cy?.stop(true)
+    cy?.nodes().stop(true)
+    if (!cy || !pending) return
+    cy.batch(() => cy.nodes().forEach((n) => pending.target[n.id()] && n.position(pending.target[n.id()])))
+    if (pending.viewport) cy.viewport(pending.viewport)
   }
 
   const getPositions = () => {
@@ -48,8 +59,8 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     return positions
   }
 
-  const computePositions = (randomize) => {
-    const options = { ...getLayoutOptions(layoutType.value), randomize, animate: false, fit: false }
+  const computePositions = () => {
+    const options = { ...getLayoutOptions(layoutType.value), randomize: true, animate: false, fit: false }
     try {
       cyRef.value.layout(options).run()
     } catch {
@@ -86,42 +97,104 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     }
   }
 
-  const anchoredViewport = (anchor, positions) => {
-    const cy = cyRef.value
-    const zoom = cy.zoom()
-    const rendered = anchor.renderedPosition()
-    const target = positions[anchor.id()]
-    const pan = { x: rendered.x - zoom * target.x, y: rendered.y - zoom * target.y }
-    const group = anchor.closedNeighborhood('node:visible')
-    const box = boxOf(group, positions)
-    const inside =
-      box.x1 * zoom + pan.x >= 0 &&
-      box.y1 * zoom + pan.y >= 0 &&
-      box.x2 * zoom + pan.x <= cy.width() &&
-      box.y2 * zoom + pan.y <= cy.height()
-    return inside ? { zoom, pan } : fitViewport(group, positions, zoom)
+  const viewCenter = () => {
+    const { x1, y1, x2, y2 } = cyRef.value.extent()
+    return { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }
   }
 
-  const runLayout = ({ animate = true, fit = false, anchorId = null } = {}) => {
+  const junctionEnds = (n) => n.connectedEdges('[?isSplit]').connectedNodes().not(n).map((end) => end.id())
+
+  const placePositions = (addedIds, anchorId) => {
+    const cy = cyRef.value
+    return placeAdded({
+      boxes: cy.nodes().map((n) => ({
+        id: n.id(),
+        ...n.position(),
+        w: n.outerWidth(),
+        h: n.outerHeight(),
+        ends: n.data('isJunction') ? junctionEnds(n) : null,
+      })),
+      addedIds,
+      neighborsOf: (id) => cy.getElementById(id).neighborhood('node').map((n) => n.id()),
+      anchorId,
+      fallback: viewCenter(),
+    })
+  }
+
+  const revealViewport = (anchorId, added, positions) => {
+    const cy = cyRef.value
+    const zoom = cy.zoom()
+    const width = cy.width()
+    const height = cy.height()
+    const visible = cy.nodes(':visible')
+    const focus = visible.filter((n) => n.id() === anchorId || added.has(n.id()))
+    if (!focus.length) return null
+    const toScreen = (box, pan) => ({
+      x1: box.x1 * zoom + pan.x,
+      y1: box.y1 * zoom + pan.y,
+      x2: box.x2 * zoom + pan.x,
+      y2: box.y2 * zoom + pan.y,
+    })
+    const seen = toScreen(boxOf(visible.filter((n) => !added.has(n.id())), {}), cy.pan())
+    const isOverview = seen.x1 >= 0 && seen.y1 >= 0 && seen.x2 <= width && seen.y2 <= height
+    const held = focus.getElementById(anchorId ?? '').renderedPosition()
+    const pan = held
+      ? { x: held.x - zoom * positions[anchorId].x, y: held.y - zoom * positions[anchorId].y }
+      : cy.pan()
+    const slide = (low, high, size) => Math.max(FIT_PADDING - low, 0) || Math.min(size - FIT_PADDING - high, 0)
+    const frame = (group) => {
+      const next = toScreen(boxOf(group, positions), pan)
+      return next.x2 - next.x1 > width - FIT_PADDING * 2 || next.y2 - next.y1 > height - FIT_PADDING * 2
+        ? fitViewport(group, positions, zoom)
+        : { zoom, pan: { x: pan.x + slide(next.x1, next.x2, width), y: pan.y + slide(next.y1, next.y2, height) } }
+    }
+    const overview = isOverview && frame(visible)
+    return overview && (zoom < READABLE_ZOOM || overview.zoom >= READABLE_ZOOM) ? overview : frame(focus)
+  }
+
+  const settle = (pending) => {
+    if (settling === pending) settling = null
+  }
+
+  const runLayout = (
+    { animate = true, fit = false, anchorId = null, originId = null, reveal = true } = {},
+    { before = {}, addedIds = [] } = {},
+  ) => {
     const cy = cyRef.value
     if (!cy?.nodes().length) return
     stopLayout()
     hideTooltip()
     const nodes = cy.nodes()
-    const start = getPositions()
-    const target = computePositions(fit)
+    const added = new Set(addedIds)
+    const isAdded = (n) => added.has(n.id())
+    const isDeep = (n) => isAdded(n) && n.neighborhood('node').every(isAdded)
+    const isFresh = nodes.every(isAdded)
+    const isFull = fit || isFresh || (added.size > nodes.length / 2 && nodes.some(isDeep))
+    const isPlacing = !isFull && layoutType.value === 'radial'
+    if (isPlacing && !added.size) return
+    const current = getPositions()
+    const target = isPlacing ? placePositions(addedIds, anchorId) : computePositions()
+    const origin = isFresh ? target[cy.nodes('[?isRoot]').id()] : (before[originId] ?? before[anchorId])
+    const startOf = (n) => {
+      if (!isAdded(n)) return current[n.id()]
+      const neighbor = n.neighborhood('node').filter((other) => !isAdded(other))
+      return origin ?? current[neighbor.id()] ?? target[n.id()]
+    }
+    const start = Object.fromEntries(nodes.map((n) => [n.id(), startOf(n)]))
     cy.batch(() => nodes.forEach((n) => n.position(start[n.id()])))
-    const anchor = anchorId && cy.getElementById(anchorId)
-    const viewport = fit
+    const viewport = isFull
       ? fitViewport(cy.nodes(':visible'), target)
-      : anchor?.length && anchor.visible()
-        ? anchoredViewport(anchor, target)
+      : reveal
+        ? revealViewport(anchorId, added, target)
         : null
     if (!animate || nodes.length > ANIMATE_MAX_NODES) {
       cy.batch(() => nodes.forEach((n) => n.position(target[n.id()])))
       if (viewport) cy.viewport(viewport)
       return
     }
+    if (isFresh && viewport) cy.viewport(viewport)
+    const pending = { target, viewport }
+    settling = pending
     activeLayout = cy.layout({
       name: 'preset',
       positions: (n) => target[n.id()],
@@ -129,30 +202,30 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       animationDuration: ANIMATION_MS,
       animationEasing: ANIMATION_EASING,
       fit: false,
+      ...(!isFresh && viewport),
+      stop: () => settle(pending),
     })
     activeLayout.run()
-    if (viewport) cy.animate({ ...viewport, duration: ANIMATION_MS, easing: ANIMATION_EASING })
   }
 
   const updateElements = (elems) => {
     const cy = cyRef.value
+    const next = uniqBy(elems, 'data.id')
+    const nextIds = new Set(next.map((e) => e.data.id))
+    const removed = cy.elements().filter((el) => !nextIds.has(el.id()))
+    const [kept, added] = partition(next, (el) => cy.getElementById(el.data.id).length)
+    const [nodes, edges] = partition(added, { group: 'nodes' })
     cy.batch(() => {
-      const next = uniqBy(elems, 'data.id')
-      const nextIds = new Set(next.map((e) => e.data.id))
-      cy.elements()
-        .filter((el) => !nextIds.has(el.id()))
-        .remove()
-      const added = []
-      next.forEach((el) => {
+      removed.remove()
+      kept.forEach((el) => {
         const existing = cy.getElementById(el.data.id)
-        if (!existing.length) added.push(el)
-        else if (Object.keys(el.data).some((key) => !isEqual(existing.data(key), el.data[key]))) existing.data(el.data)
+        if (Object.keys(el.data).some((key) => !isEqual(existing.data(key), el.data[key]))) existing.data(el.data)
       })
-      const [nodes, edges] = partition(added, { group: 'nodes' })
       if (nodes.length) cy.add(nodes)
       if (edges.length) cy.add(edges)
       cy.elements('[?isExploring]').data('isExploring', false)
     })
+    return { addedIds: nodes.map((el) => el.data.id), isChanged: removed.length + added.length > 0 }
   }
 
   const pendingPosition = (id, overlay, positions) => {
@@ -160,10 +233,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     const anchorId = overlay.edges
       .map((edge) => (edge.source === id ? edge.target : edge.target === id ? edge.source : null))
       .find((other) => other && positions[other])
-    const { x1, y1, x2, y2 } = cyRef.value.extent()
-    const seed = anchorId
-      ? { x: positions[anchorId].x, y: positions[anchorId].y + PENDING_OFFSET_Y }
-      : { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }
+    const seed = anchorId ? { x: positions[anchorId].x, y: positions[anchorId].y + PENDING_OFFSET_Y } : viewCenter()
     return { x: seed.x + (Math.random() - 0.5) * PENDING_SPREAD, y: seed.y }
   }
 
@@ -197,11 +267,11 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     elems.forEach((el) => {
       el.data.pending = overlay.pending[el.data.originalId] || ''
     })
-    updateElements(elems)
+    const { addedIds, isChanged } = updateElements(elems)
     applyFilter()
     hasElements.value = cyRef.value.elements().length > 0
-    if (!layout) return
-    Promise.resolve().then(() => runLayout(layout))
+    if (layout && isChanged) Promise.resolve().then(() => runLayout(layout, { before: positions, addedIds }))
+    return isChanged
   }
 
   const graphFilter = ref('')
@@ -236,6 +306,8 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     cyRef.value = cytoscape({
       container: cyContainer.value,
       style: getCytoscapeStyle(isDark.value, layoutType.value),
+      minZoom: MIN_ZOOM,
+      maxZoom: MAX_ZOOM,
     })
 
     wheelHandler = (e) => {
