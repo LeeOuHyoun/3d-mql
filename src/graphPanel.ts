@@ -56,6 +56,8 @@ const consoleFocusKey = '3d-mql.consoleFocus';
 
 const objectIdPattern = /^(?:\d+\.\d+\.\d+\.\d+|[0-9a-f]{32})$/i;
 
+const searchKeys = ['type', 'name', 'revision'];
+
 export class GraphPanel {
   private static readonly panels = new Map<number, GraphPanel>();
   private static lastActive: GraphPanel | undefined;
@@ -64,7 +66,7 @@ export class GraphPanel {
   private readonly disposables: vscode.Disposable[] = [];
   private status: { state: ClientStatus; message?: string } = { state: 'connecting' };
   private isReady = false;
-  private pendingRoot = '';
+  private pendingMessage: Record<string, unknown> | undefined;
   private txActive = false;
   private consoleFocused = false;
 
@@ -80,7 +82,18 @@ export class GraphPanel {
     }
     const rootId = typeof id === 'string' ? id.trim() : '';
     if (!objectIdPattern.test(rootId)) throw new Error(`3D MQL 그래프에서 열 수 없는 객체 ID입니다: ${String(id)}`);
-    (GraphPanel.lastActive ?? GraphPanel.create(context, output)).openRoot(rootId);
+    GraphPanel.target(context, output).deliver({ type: 'openRoot', id: rootId });
+  }
+
+  static search(context: vscode.ExtensionContext, output: vscode.OutputChannel, query?: unknown) {
+    const fields = query && typeof query === 'object' ? (query as Record<string, unknown>) : {};
+    const [type, name, revision] = searchKeys.map((key) => (typeof fields[key] === 'string' ? fields[key].trim() : ''));
+    if (!type && !name && !revision) throw new Error(`3D MQL 그래프에서 검색할 값이 없습니다: ${JSON.stringify(query)}`);
+    GraphPanel.target(context, output).deliver({ type: 'search', query: { type, name, revision } });
+  }
+
+  private static target(context: vscode.ExtensionContext, output: vscode.OutputChannel) {
+    return GraphPanel.lastActive ?? GraphPanel.create(context, output);
   }
 
   private static create(context: vscode.ExtensionContext, output: vscode.OutputChannel) {
@@ -134,10 +147,10 @@ export class GraphPanel {
     );
   }
 
-  private openRoot(id: string) {
+  private deliver(message: Record<string, unknown>) {
     this.panel.reveal();
-    if (this.isReady) this.post({ type: 'openRoot', id });
-    else this.pendingRoot = id;
+    if (this.isReady) this.post(message);
+    else this.pendingMessage = message;
   }
 
   private onMessage(message: Message) {
@@ -145,8 +158,8 @@ export class GraphPanel {
       this.isReady = true;
       this.post({ type: 'init', dark: this.isDark(), ...this.status });
       void this.client.start().catch(() => undefined);
-      if (this.pendingRoot) this.post({ type: 'openRoot', id: this.pendingRoot });
-      this.pendingRoot = '';
+      if (this.pendingMessage) this.post(this.pendingMessage);
+      this.pendingMessage = undefined;
     } else if (message.type === 'reconnect') {
       void this.client.restart().catch(() => undefined);
     } else if (message.type === 'setTheme') {

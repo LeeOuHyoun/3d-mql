@@ -476,6 +476,7 @@ export function useGraphExplorer() {
       searchLimit.value = limit
       isSearchPanelOpen.value = true
       persist()
+      if (results.length === 1) loadRoot(results[0].id)
     } catch (e) {
       errorMsg.value = e.message
     } finally {

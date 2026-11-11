@@ -13,6 +13,7 @@ export function activate(context: vscode.ExtensionContext) {
   const output = vscode.window.createOutputChannel('3D MQL');
   context.subscriptions.push(
     vscode.commands.registerCommand('3d-mql.openGraph', (id?: unknown) => GraphPanel.open(context, output, id)),
+    vscode.commands.registerCommand('3d-mql.search', (query?: unknown) => GraphPanel.search(context, output, query)),
     ...graphCommands.map((name) =>
       vscode.commands.registerCommand(`3d-mql.graph.${name}`, () => GraphPanel.postToActive({ type: 'shortcut', name })),
     ),
