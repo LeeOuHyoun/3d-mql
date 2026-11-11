@@ -4,8 +4,20 @@
 확인한 항목은 `[x]`로 바꾸고, 문제가 있으면 항목 아래 `피드백:`에 증상을 적어 주세요.
 코드를 고친 뒤에는 `local_docs/verify` 의 검증 스크립트를 다시 돌려 회귀를 확인합니다.
 
-- 기준 버전: 0.0.27
+- 기준 버전: 0.0.28
 - 표기: ⚠️ 문제가 생길 가능성이 높아 우선 확인이 필요한 항목
+
+---
+
+## 0.0.28 변경 (콘솔 문장 단위 실행)
+
+### 콘솔 실행
+- [ ] Ctrl+Enter · 실행 버튼은 입력 전체가 아니라 커서가 있는 문장(세미콜론 기준) 하나만 실행한다. 입력칸의 다른 문장은 그대로 남는다
+- [ ] 세미콜론이 없는 문장을 실행하면 입력칸의 그 문장 끝에 `;` 가 붙는다
+- [ ] 실행할 문장에 채우지 않은 `<…>` 칸이 있으면 실행하지 않고 그 칸을 선택하며, 상태 표시줄에 ⚠ 아이콘과 "채우지 않은 <…> 칸이 있어 실행하지 않았습니다" 가 보인다 (enovia-mql 콘솔도 같음)
+- [ ] 콘솔 명령이 실행 중일 때 Ctrl+Enter · 실행 버튼을 눌러도 새 명령이 실행되지 않는다 (enovia-mql 과 같음)
+
+피드백:
 
 ---
 
@@ -134,9 +146,13 @@ enovia-mql에서 그래프 열기, 그리고 enovia-mql 콘솔에서 옮겨 온 
 
 MQL 콘솔에서 직접 실행합니다. 결과가 설명과 다르면 `피드백:`에 실제 출력을 붙여 주세요.
 
-- [ ] ⚠️ `print context;` 출력이 `context vault <vault> user <user>` 꼴이다 (하단 바 접속 표시, 스크립트 머리말의 Create by)
-- [ ] ⚠️ `temp query bus <Type> * * limit 5 where "current=='<State>'" select id current dump |;` 가 실행된다 — `limit` 뒤에 `where`가 오는 순서 (Where 검색)
+- [x] ⚠️ `print context;` 출력이 `context vault <vault> user <user>` 꼴이다 (하단 바 접속 표시, 스크립트 머리말의 Create by)
+  - 실제 출력은 `context vault ADMINISTRATION person creator` (user 가 아니라 person). 접속 표시 해석에 person 도 인식하도록 수정함
+- [x] ⚠️ `temp query bus <Type> * * limit 5 where "current=='<State>'" select id current dump |;` 가 실행된다 — `limit` 뒤에 `where`가 오는 순서 (Where 검색)
+  - 정상. 조건에 맞는 1건만 나옴
 - [ ] ⚠️ `expand bus <id> from relationship * select bus type id current where "current=='<State>'" select rel type id dump |;` 가 실행되고 조건에 맞는 객체만 나온다 (Expand 옵션의 객체 Where)
+  - `select bus ...` 뒤에 where 를 두면 `unknown field name 'current=='Exit''` 오류. 지금 코드의 문장 순서로는 동작하지 않음
+  - where 를 `from relationship *` 바로 뒤(select 앞)로 옮기면 오류는 없지만, Exit 객체가 있는데도 0건. 올바른 위치·형식 미확정
 - [ ] ⚠️ `expand bus <id> from relationship * select bus type id current select rel type id where "<관계 속성 조건>" dump |;` 가 실행된다 (Expand 옵션의 관계 Where)
 - [ ] `recurse to 3`에 객체 Where를 함께 줬을 때, 조건에 안 맞는 중간 객체의 하위가 결과에서 빠지는지 남는지 (피드백에 적어 주세요)
 - [ ] ⚠️ `expand bus <id> to relationship * recurse to end select bus type id current select rel type id dump | limit 20;` 이 말단(최상위) 객체만 돌려준다. 첫 칸의 단계 숫자가 무엇으로 나오는지도 적어 주세요 (Recurse "말단만")

@@ -37,7 +37,7 @@ type Message =
   | { type: 'ready' }
   | { type: 'reconnect' }
   | { type: 'setTheme'; dark: boolean }
-  | { type: 'notify'; text: string }
+  | { type: 'notify'; text: string; warning?: boolean }
   | { type: 'consoleFocus'; focused: boolean }
   | { type: 'request'; id: number; method: string; params: Record<string, unknown> };
 
@@ -165,7 +165,7 @@ export class GraphPanel {
     } else if (message.type === 'setTheme') {
       void this.context.globalState.update(themeKey, message.dark);
     } else if (message.type === 'notify') {
-      this.notify(message.text);
+      this.notify(message.text, message.warning === true);
     } else if (message.type === 'consoleFocus') {
       this.consoleFocused = message.focused === true;
       GraphPanel.syncConsoleFocus();
@@ -287,8 +287,8 @@ export class GraphPanel {
       }));
   }
 
-  private notify(text: string) {
-    vscode.window.setStatusBarMessage(`$(check) ${text}`, 3000);
+  private notify(text: string, warning = false) {
+    vscode.window.setStatusBarMessage(`$(${warning ? 'warning' : 'check'}) ${text}`, 3000);
   }
 
   private isDark() {

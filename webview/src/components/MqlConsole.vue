@@ -50,6 +50,7 @@ const {
   caret: assistCaret,
   close: closeAssist,
   accept: acceptAssist,
+  takeStatement,
   onKeydown: onInputKeydown,
   onInput: onInputChange,
   onFocus: onInputFocus,
@@ -58,7 +59,9 @@ const {
 
 const runInput = () => {
   closeAssist()
-  run()
+  if (isRunning.value) return
+  const statement = takeStatement()
+  if (statement) run(statement, { fill: false })
 }
 
 watch(
@@ -283,7 +286,7 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
       ></textarea>
       <button
         class="h-7 px-3 flex items-center gap-1.5 rounded-md border-none bg-[#61afef] hover:bg-[#4b8bca] text-white text-xs font-semibold cursor-pointer"
-        @click="run()"
+        @click="runInput"
       >
         <Play :size="12" />
         실행

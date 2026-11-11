@@ -168,7 +168,7 @@ const tokenize = (text) => {
       continue
     }
     if (ch === ';') {
-      tokens.push({ type: 'semi' })
+      tokens.push({ type: 'semi', end: i + 1 })
       i += 1
       continue
     }
@@ -189,7 +189,7 @@ const tokenize = (text) => {
       else if (depth === 0 && (/\s/.test(c) || c === ';')) break
       j += 1
     }
-    tokens.push({ type: 'word', value: text.slice(i, j) })
+    tokens.push({ type: 'word', value: text.slice(i, j), start: i, end: j })
     i = j
   }
   return tokens
@@ -221,14 +221,14 @@ const splitStatements = (text) => {
   const statements = []
   let current = []
   let afterNewline = false
-  const flush = () => {
-    if (current.length) statements.push(current)
+  const flush = (end = current.at(-1)?.end) => {
+    if (current.length) statements.push({ words: current, start: current[0].start, end })
     current = []
     afterNewline = false
   }
   tokens.forEach((token, index) => {
     if (token.type === 'semi') {
-      if (current.length) flush()
+      if (current.length) flush(token.end)
       return
     }
     if (token.type === 'newline') {
@@ -313,4 +313,22 @@ const formatStatement = (words) => {
   return joined.endsWith(';') ? joined : `${joined};`
 }
 
-export const formatMqlText = (text) => splitStatements(text).map(formatStatement).join('\n\n')
+export const formatMqlText = (text) =>
+  splitStatements(text)
+    .map((statement) => formatStatement(statement.words))
+    .join('\n\n')
+
+export const statementSpanAt = (text, cursor) => {
+  const statements = splitStatements(text)
+  return (
+    statements.find((statement) => cursor >= statement.start && cursor <= statement.end) ??
+    statements.findLast((statement) => statement.start <= cursor) ??
+    statements[0] ??
+    null
+  )
+}
+
+export const flattenStatement = (words) => {
+  const line = words.map((word) => word.value).join(' ')
+  return line.endsWith(';') ? line : `${line};`
+}

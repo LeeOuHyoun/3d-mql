@@ -204,8 +204,11 @@ export const matchPhrases = (raw, force, names = []) => {
   return verbMatches.length ? verbMatches : [...PHRASES]
 }
 
+export const placeholderSpans = (text) =>
+  [...text.matchAll(PLACEHOLDER)].map((match) => ({ start: match.index, end: match.index + match[0].length }))
+
 export const nextPlaceholder = (text, start, end, back) => {
-  const spans = [...text.matchAll(PLACEHOLDER)].map((match) => ({ start: match.index, end: match.index + match[0].length }))
+  const spans = placeholderSpans(text)
   if (!spans.length) return null
   if (back) return spans.findLast((span) => span.end <= start) ?? spans.at(-1)
   return spans.find((span) => span.start >= end) ?? spans[0]

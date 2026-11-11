@@ -1,6 +1,14 @@
 import { onMessage, post, request } from '@/api.js'
-import { formatMqlText } from '@/console/mqlFormat.js'
-import { insertTextOf, isTemplate, matchPhrases, nextPlaceholder, schemaKindOf, statementPrefix } from '@/console/mqlAssist.js'
+import { flattenStatement, formatMqlText, statementSpanAt } from '@/console/mqlFormat.js'
+import {
+  insertTextOf,
+  isTemplate,
+  matchPhrases,
+  nextPlaceholder,
+  placeholderSpans,
+  schemaKindOf,
+  statementPrefix,
+} from '@/console/mqlAssist.js'
 import { hasWriteStatement, useMqlConsole } from './useMqlConsole.js'
 
 const MIRROR_STYLES = [
@@ -144,6 +152,26 @@ export function useConsoleAssist(textarea) {
     if (!isWhole) el.setSelectionRange(start, start + formatted.length)
   }
 
+  const takeStatement = () => {
+    const el = textarea.value
+    const statement = el && statementSpanAt(el.value, caretOffset(el))
+    if (!statement) return ''
+    const hole = placeholderSpans(el.value).find((span) => span.start >= statement.start && span.end <= statement.end)
+    if (hole) {
+      el.focus()
+      el.setSelectionRange(hole.start, hole.end)
+      post({ type: 'notify', text: '채우지 않은 <…> 칸이 있어 실행하지 않았습니다.', warning: true })
+      return ''
+    }
+    if (el.value[statement.end - 1] !== ';') {
+      const { selectionStart, selectionEnd } = el
+      const shift = (pos) => (pos >= statement.end ? pos + 1 : pos)
+      replaceRange(el, statement.end, statement.end, ';')
+      el.setSelectionRange(shift(selectionStart), shift(selectionEnd))
+    }
+    return flattenStatement(statement.words)
+  }
+
   const navigate = (e) => {
     if (e.key === 'Escape') {
       e.stopPropagation()
@@ -191,5 +219,5 @@ export function useConsoleAssist(textarea) {
   )
   tryOnScopeDispose(() => setFocus(false))
 
-  return { items, index, caret, close, accept, onKeydown, onInput, onFocus, onBlur }
+  return { items, index, caret, close, accept, takeStatement, onKeydown, onInput, onFocus, onBlur }
 }

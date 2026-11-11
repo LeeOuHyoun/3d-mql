@@ -71,8 +71,8 @@ export function useGraphExplorer() {
   const connection = ref({ state: 'connecting', message: '' })
   const context = computed(() => {
     const text = connection.value.state === 'ready' ? connection.value.message : ''
-    const user = /\buser\s+(.+?)(?=\s+(?:role|vault)\b|$)/i.exec(text)?.[1] ?? ''
-    const vault = /\bvault\s+(.+?)(?=\s+(?:user|role)\b|$)/i.exec(text)?.[1] ?? ''
+    const user = /\b(?:user|person)\s+(.+?)(?=\s+(?:role|vault)\b|$)/i.exec(text)?.[1] ?? ''
+    const vault = /\bvault\s+(.+?)(?=\s+(?:user|person|role)\b|$)/i.exec(text)?.[1] ?? ''
     return { user, vault, label: user ? [user, vault].filter(Boolean).join(' · ') : text }
   })
   const reconnect = () => {

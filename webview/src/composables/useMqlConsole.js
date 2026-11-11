@@ -98,11 +98,11 @@ const execute = async (text) => {
   return entry
 }
 
-const run = async (command = input.value, { confirm = true } = {}) => {
+const run = async (command = input.value, { confirm = true, fill = true } = {}) => {
   const text = command.trim()
   if (!text) return
   isOpen.value = true
-  input.value = text
+  if (fill) input.value = text
   const decision = confirm ? await request('confirmRun', { command: text }).catch(() => 'cancel') : 'run'
   if (decision === 'cancel') return
   remember(text)
