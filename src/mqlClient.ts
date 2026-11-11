@@ -11,9 +11,9 @@ type Waiter = Pending & {
   lines: string[];
   streamed: number;
   onChunk?: Chunk;
-  timer?: Timer;
   discard?: boolean;
 };
+type Signal = { resolve: () => void; reject: (error: Error) => void };
 type Learning = Pending & {
   command: string;
   at: number;
@@ -135,10 +135,11 @@ export class MqlClient {
   private readonly remainders: Record<Pipe, string> = { out: '', err: '' };
   private readonly flushTimers: Partial<Record<Pipe, Timer>> = {};
   private waiters: Waiter[] = [];
-  private drainers: (() => void)[] = [];
+  private drainers: Signal[] = [];
+  private watchdog: Timer | undefined;
   private learning: Learning | undefined;
   private learnTimer: Timer | undefined;
-  private startWaiter: { resolve: () => void; reject: (error: Error) => void } | undefined;
+  private startWaiter: Signal | undefined;
   private starting: Promise<void> | undefined;
   private gate: Promise<unknown> = Promise.resolve();
   private marker: string[] | undefined;
@@ -250,7 +251,7 @@ export class MqlClient {
         reject(new Error('MQL 명령 전송에 실패했습니다.'));
         return;
       }
-      this.arm(this.waiters.find((waiter) => !waiter.discard));
+      if (!this.watchdog) this.watch();
     });
   }
 
@@ -267,23 +268,34 @@ export class MqlClient {
   }
 
   private drain() {
-    return this.waiters.length ? new Promise<void>((resolve) => this.drainers.push(resolve)) : Promise.resolve();
+    if (!this.waiters.length) return Promise.resolve();
+    if (!this.watchdog) this.watch();
+    return new Promise<void>((resolve, reject) => this.drainers.push({ resolve, reject }));
   }
 
-  private arm(waiter: Waiter | undefined) {
-    if (!waiter || waiter.timer || waiter.discard) return;
-    waiter.timer = setTimeout(() => {
-      waiter.discard = true;
-      this.log(`timeout > ${waiter.command}`);
-      waiter.reject(new Error('MQL 응답 시간이 초과되었습니다.'));
-      this.arm(this.waiters[this.waiters.indexOf(waiter) + 1]);
-    }, responseTimeoutMs);
+  private watch() {
+    clearTimeout(this.watchdog);
+    this.watchdog = this.waiters.length ? setTimeout(() => this.expire(), responseTimeoutMs) : undefined;
+  }
+
+  private expire() {
+    this.watchdog = undefined;
+    const error = new Error('MQL 응답 시간이 초과되었습니다.');
+    this.waiters
+      .filter((waiter) => !waiter.discard)
+      .forEach((waiter) => {
+        waiter.discard = true;
+        this.log(`timeout > ${waiter.command}`);
+        waiter.reject(error);
+      });
+    this.drainers.splice(0).forEach((drainer) => drainer.reject(error));
   }
 
   private onOutput(text: string, pipe: Pipe) {
     const lines = (this.remainders[pipe] + text).split(/\r?\n/);
     this.remainders[pipe] = lines.pop() ?? '';
     lines.forEach((line) => this.onLine(cleanLine(line)));
+    if (cleanLine(text).trim()) this.watch();
     this.stream();
     if (this.learning) {
       clearTimeout(this.learnTimer);
@@ -302,12 +314,11 @@ export class MqlClient {
     head.lines.push(line);
     if (line.trim() !== marker[marker.length - 1] || !sameBlock(lastValues(head.lines, marker.length), marker)) return;
     this.waiters.shift();
-    clearTimeout(head.timer);
     const text = stripBlocks(head.lines, marker, 1).join('\n');
     this.logResponse(head.command, head.at, text);
     if (!head.discard) this.settle(head, text);
-    this.arm(this.waiters[0]);
-    if (!this.waiters.length) this.drainers.splice(0).forEach((resolve) => resolve());
+    this.watch();
+    if (!this.waiters.length) this.drainers.splice(0).forEach((drainer) => drainer.resolve());
   }
 
   private stream() {
@@ -392,11 +403,12 @@ export class MqlClient {
   }
 
   private rejectAll(error: Error) {
+    clearTimeout(this.watchdog);
+    this.watchdog = undefined;
     this.waiters.splice(0).forEach((waiter) => {
-      clearTimeout(waiter.timer);
       if (!waiter.discard) waiter.reject(error);
     });
-    this.drainers.splice(0).forEach((resolve) => resolve());
+    this.drainers.splice(0).forEach((drainer) => drainer.resolve());
     this.finishLearning(error);
     this.startWaiter?.reject(error);
     this.startWaiter = undefined;

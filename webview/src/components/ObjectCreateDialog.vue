@@ -46,13 +46,20 @@ const form = reactive({
 })
 const attributeValues = ref(Object.fromEntries((draft?.attributes ?? []).map(({ key, value }) => [key, value])))
 
-const { state: typeNames } = useAsyncState(() => cachedRequest('list', { kind: 'type' }), [])
-const { state: vaultNames } = useAsyncState(() => cachedRequest('list', { kind: 'vault' }), [])
+const {
+  state: typeNames,
+  isLoading: isTypeListLoading,
+  error: typeListError,
+} = useAsyncState(() => cachedRequest('list', { kind: 'type' }), [])
+const { state: vaultNames, error: vaultListError } = useAsyncState(() => cachedRequest('list', { kind: 'vault' }), [])
+
+const listWarning = (kind, error) =>
+  error && `${kind} 목록을 불러오지 못했습니다. 창을 다시 열면 다시 불러옵니다. (${error.message})`
 
 const typeName = computed(() => form.type.trim())
 const typeSet = computed(() => new Set(typeNames.value))
 const isListedType = computed(() => !typeSet.value.size || typeSet.value.has(typeName.value))
-const lookupType = computed(() => (isListedType.value ? typeName.value : ''))
+const lookupType = computed(() => (!isTypeListLoading.value && isListedType.value ? typeName.value : ''))
 const debouncedType = refDebounced(lookupType, LOOKUP_DEBOUNCE_MS)
 const {
   data: typeInfo,
@@ -60,6 +67,9 @@ const {
   isLoading: isTypeLoading,
 } = useLoader(debouncedType, () => cachedRequest('typeInfo', { id: debouncedType.value }))
 const attributeList = computed(() => typeInfo.value?.attributes ?? [])
+const loadingText = computed(() =>
+  isTypeListLoading.value ? 'type 목록을 불러오는 중...' : isTypeLoading.value ? 'type 정보를 조회하는 중...' : '',
+)
 
 const isPolicyAuto = ref(!draft?.policy)
 
@@ -139,6 +149,8 @@ const { statements, error: previewError } = useChangePreview(() => [
 
 const warnings = computed(() =>
   [
+    listWarning('type', typeListError.value),
+    listWarning('vault', vaultListError.value),
     typeName.value && !isListedType.value && 'type 목록에 없는 이름입니다. 정확한 type 이름인지 확인하세요.',
     typeInfo.value?.isAbstract && 'abstract type이라 객체를 만들 수 없습니다.',
     typeInfo.value?.chain.some((name) => plmTypePattern.test(name)) &&
@@ -199,9 +211,9 @@ const codeClass =
             />
           </template>
         </div>
-        <div v-if="isTypeLoading" class="flex items-center gap-2 text-gray-400">
+        <div v-if="loadingText" class="flex items-center gap-2 text-gray-400">
           <Loader2 :size="14" class="animate-spin" />
-          type 정보를 조회하는 중...
+          {{ loadingText }}
         </div>
         <div v-else-if="typeError" class="text-red-500 whitespace-pre-wrap break-all">{{ typeError }}</div>
         <div v-if="attributeList.length" class="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-2 items-center">
