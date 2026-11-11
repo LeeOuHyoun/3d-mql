@@ -161,12 +161,17 @@ export class MqlClient {
   }
 
   start(): Promise<void> {
-    this.starting ??= this.boot().catch((error: Error) => {
-      this.starting = undefined;
-      this.session.stop();
-      this.onStatus('failed', error.message);
-      throw error;
-    });
+    if (!this.starting) {
+      const booting: Promise<void> = this.boot().catch((error: Error) => {
+        if (!this.starting || this.starting === booting) {
+          this.starting = undefined;
+          this.session.stop();
+          this.onStatus('failed', error.message);
+        }
+        throw error;
+      });
+      this.starting = booting;
+    }
     return this.starting;
   }
 
@@ -181,7 +186,7 @@ export class MqlClient {
     const text = withSemicolon(command);
     const exclusive = changesContext(text);
     const task = this.gate.then(async () => {
-      await this.start();
+      await this.connected();
       if (!exclusive) return this.enqueue(text, onChunk);
       await this.drain();
       const output = await this.learn(text).catch((error: Error) => this.recover(text, error));
@@ -198,6 +203,15 @@ export class MqlClient {
     this.session.stop();
     this.rejectAll(new Error('MQL 세션이 종료되었습니다.'));
     this.starting = undefined;
+  }
+
+  private connected() {
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('MQL 연결이 지연되고 있습니다.')), responseTimeoutMs);
+      this.start()
+        .then(resolve, reject)
+        .finally(() => clearTimeout(timer));
+    });
   }
 
   private async boot() {

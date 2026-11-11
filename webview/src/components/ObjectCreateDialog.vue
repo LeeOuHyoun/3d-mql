@@ -13,6 +13,7 @@ const plmTypePattern = /^PLM(Core|Entity)/
 
 const props = defineProps({
   options: { type: Object, required: true },
+  isConnecting: { type: Boolean, default: false },
 })
 const emit = defineEmits(['submit', 'close'])
 
@@ -67,8 +68,9 @@ const {
   isLoading: isTypeLoading,
 } = useLoader(debouncedType, () => cachedRequest('typeInfo', { id: debouncedType.value }))
 const attributeList = computed(() => typeInfo.value?.attributes ?? [])
+const listLoadingText = computed(() => (props.isConnecting ? 'MQL에 연결하는 중...' : 'type 목록을 불러오는 중...'))
 const loadingText = computed(() =>
-  isTypeListLoading.value ? 'type 목록을 불러오는 중...' : isTypeLoading.value ? 'type 정보를 조회하는 중...' : '',
+  isTypeListLoading.value ? listLoadingText.value : isTypeLoading.value ? 'type 정보를 조회하는 중...' : '',
 )
 
 const isPolicyAuto = ref(!draft?.policy)

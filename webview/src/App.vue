@@ -509,6 +509,7 @@ const contextMenuItems = computed(() => {
       <ObjectCreateDialog
         v-if="createDialog"
         :options="createDialog"
+        :is-connecting="connection.state === 'connecting'"
         @submit="submitCreate"
         @close="createDialog = null"
       />
