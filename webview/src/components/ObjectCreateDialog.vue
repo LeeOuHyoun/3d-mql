@@ -5,6 +5,7 @@ import { useLoader } from '../composables/useLoader.js'
 import { toFields, useChangePreview } from '../composables/useChangePreview.js'
 import AttributeField from './AttributeField.vue'
 import BaseDialog from './BaseDialog.vue'
+import ComboInput from './ComboInput.vue'
 import RelationshipFields from './RelationshipFields.vue'
 
 const LOOKUP_DEBOUNCE_MS = 400
@@ -18,18 +19,18 @@ const emit = defineEmits(['submit', 'close'])
 const { anchor, draft, defaults } = props.options
 
 const optionalFields = [
-  { key: 'current', label: 'State', list: 'create-state-names', placeholder: '(기본: 첫 state)' },
+  { key: 'current', label: 'State', placeholder: '(기본: 첫 state)' },
   { key: 'owner', label: 'Owner', placeholder: defaults.owner ? `(기본: ${defaults.owner})` : '(기본)' },
   { key: 'description', label: 'Description', placeholder: '' },
   { key: 'organization', label: 'Organization', placeholder: '(비워 두면 지정하지 않음)' },
   { key: 'project', label: 'Project', placeholder: '(비워 두면 지정하지 않음)' },
 ]
 const basicFields = [
-  { key: 'type', label: 'Type', required: true, list: 'create-type-names' },
+  { key: 'type', label: 'Type', required: true },
   { key: 'name', label: 'Name', required: true },
   { key: 'revision', label: 'Revision' },
-  { key: 'policy', label: 'Policy', required: true, list: 'create-policy-names' },
-  { key: 'vault', label: 'Vault', required: true, list: 'create-vault-names' },
+  { key: 'policy', label: 'Policy', required: true },
+  { key: 'vault', label: 'Vault', required: true },
   ...optionalFields,
 ]
 
@@ -78,12 +79,12 @@ const { data: stateNames } = useLoader(debouncedPolicy, () =>
   cachedRequest('policyStates', { id: debouncedPolicy.value }).catch(() => []),
 )
 
-const datalists = computed(() => [
-  { id: 'create-type-names', names: typeNames.value },
-  { id: 'create-policy-names', names: typeInfo.value?.policies ?? [] },
-  { id: 'create-vault-names', names: vaultNames.value },
-  { id: 'create-state-names', names: stateNames.value ?? [] },
-])
+const fieldOptions = computed(() => ({
+  type: typeNames.value,
+  policy: typeInfo.value?.policies ?? [],
+  vault: vaultNames.value,
+  current: stateNames.value ?? [],
+}))
 
 const tnr = computed(() => ({ type: typeName.value, name: form.name.trim(), revision: form.revision.trim() }))
 const tnrKey = computed(() => (lookupType.value && tnr.value.name ? JSON.stringify(tnr.value) : ''))
@@ -188,20 +189,16 @@ const codeClass =
               {{ field.label }}
               <span v-if="field.required" class="text-red-500">*</span>
             </span>
-            <input
+            <ComboInput
               v-model="form[field.key]"
               :class="inputClass"
-              :list="field.list"
+              :options="fieldOptions[field.key]"
               :placeholder="field.placeholder"
               spellcheck="false"
-              autocomplete="off"
-              @input="handleInput(field.key)"
+              @update:model-value="handleInput(field.key)"
             />
           </template>
         </div>
-        <datalist v-for="list in datalists" :id="list.id" :key="list.id">
-          <option v-for="name in list.names" :key="name" :value="name"></option>
-        </datalist>
         <div v-if="isTypeLoading" class="flex items-center gap-2 text-gray-400">
           <Loader2 :size="14" class="animate-spin" />
           type 정보를 조회하는 중...

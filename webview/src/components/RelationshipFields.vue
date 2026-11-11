@@ -3,6 +3,7 @@ import { ArrowLeftRight, Loader2, TriangleAlert } from '@lucide/vue'
 import { cachedRequest } from '@/api.js'
 import { useLoader } from '../composables/useLoader.js'
 import AttributeField from './AttributeField.vue'
+import ComboInput from './ComboInput.vue'
 
 const CHECK_DEBOUNCE_MS = 400
 
@@ -113,10 +114,7 @@ const inputClass =
   </div>
   <label class="flex flex-col gap-1 font-semibold text-gray-500 dark:text-[#5c6370]">
     Relationship
-    <input v-model="relType" :class="inputClass" list="relationship-names" spellcheck="false" />
-    <datalist id="relationship-names">
-      <option v-for="name in props.relations" :key="name" :value="name"></option>
-    </datalist>
+    <ComboInput v-model="relType" :class="inputClass" :options="props.relations" spellcheck="false" />
   </label>
   <div v-if="isChecking" class="flex items-center gap-2 text-gray-400">
     <Loader2 :size="14" class="animate-spin" />
