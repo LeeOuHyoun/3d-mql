@@ -4,7 +4,7 @@ import BaseDialog from './BaseDialog.vue'
 const props = defineProps({
   label: { type: String, default: '' },
 })
-const emit = defineEmits(['submit', 'copyJava', 'close'])
+const emit = defineEmits(['submit', 'close'])
 
 const options = useStorage(
   '3d-mql-expand-options',
@@ -36,17 +36,11 @@ const recurseModes = [
 
 const needsLimit = computed(() => options.value.recurseMode !== 'level' && !(options.value.limit > 0))
 
-const submittedOptions = () => {
-  const { recurseMode, recurse, ...rest } = options.value
-  return { ...rest, recurse: recurseMode === 'level' ? recurse : recurseMode }
-}
-
 const handleSubmit = () => {
   if (needsLimit.value) return
-  emit('submit', submittedOptions())
+  const { recurseMode, recurse, ...rest } = options.value
+  emit('submit', { ...rest, recurse: recurseMode === 'level' ? recurse : recurseMode })
 }
-
-const handleCopyJava = () => emit('copyJava', submittedOptions())
 
 const inputClass =
   'w-full h-7 px-2 text-xs rounded-md border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#21252b] text-gray-800 dark:text-[#abb2bf] outline-none focus:border-[#61afef]'
@@ -112,14 +106,6 @@ const labelClass = 'flex flex-col gap-1 font-semibold text-gray-500 dark:text-[#
         말단 객체만 조회하고, 기준 객체와는 점선(가상 연결)으로 잇습니다.
       </div>
       <div class="flex justify-end gap-2 pt-1">
-        <button
-          type="button"
-          class="mr-auto h-7 px-3 rounded-md border border-orange-300 dark:border-orange-800 bg-transparent text-orange-600 dark:text-orange-400 text-xs cursor-pointer hover:bg-orange-50 dark:hover:bg-orange-900/40"
-          title="이 조건으로 getRelatedObjects 를 부르는 Java 가이드 코드를 클립보드에 복사합니다"
-          @click="handleCopyJava"
-        >
-          Java 코드 복사
-        </button>
         <button
           type="button"
           class="h-7 px-3 rounded-md border border-gray-200 dark:border-[#3e4451] bg-transparent text-xs cursor-pointer"

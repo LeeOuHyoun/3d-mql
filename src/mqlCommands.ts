@@ -286,15 +286,13 @@ export async function expandObject(client: MqlClient, id: string, direction: Dir
   return { nodes: results.flatMap((item) => item.nodes), edges: results.flatMap((item) => item.edges) };
 }
 
-export function expandStatement(id: string, direction: 'from' | 'to', options: ExpandOptions = {}) {
+async function expandDirection(client: MqlClient, id: string, direction: 'from' | 'to', options: ExpandOptions) {
   const limit = Number(options.limit) > 0 ? ` limit ${Math.floor(Number(options.limit))}` : '';
   const busSelect = `select bus type id current${whereClause(options.busWhere)}`;
   const relSelect = `select rel type id${whereClause(options.relWhere)}`;
-  return `${expandCommand(id, direction, options)} ${busSelect} ${relSelect} dump ${quote(separator)}${limit}`;
-}
-
-async function expandDirection(client: MqlClient, id: string, direction: 'from' | 'to', options: ExpandOptions) {
-  const text = await client.run(expandStatement(id, direction, options));
+  const text = await client.run(
+    `${expandCommand(id, direction, options)} ${busSelect} ${relSelect} dump ${quote(separator)}${limit}`,
+  );
   const isEnd = options.recurse === 'end';
   const nodes: ObjectSummary[] = [];
   const edges: GraphEdge[] = [];
@@ -654,12 +652,9 @@ export async function policyStates(client: MqlClient, name: string) {
   return selectValues(await client.run(`print policy ${quote(name)} select state`), 'state');
 }
 
-export async function relationshipAttributeNames(client: MqlClient, name: string) {
-  return selectValues(await client.run(`print relationship ${quote(name)} select attribute`), 'attribute');
-}
-
 export async function relationshipAttributes(client: MqlClient, name: string) {
-  return attributeInfo(client, await relationshipAttributeNames(client, name));
+  const text = await client.run(`print relationship ${quote(name)} select attribute`);
+  return attributeInfo(client, selectValues(text, 'attribute'));
 }
 
 export async function listNames(client: MqlClient, kind: string) {
@@ -767,12 +762,6 @@ const bySymbolicOf = (client: MqlClient) =>
     (): Record<string, string> => ({}),
   );
 
-export const symbolicsByName = (client: MqlClient) =>
-  symbolicNames(client).then(
-    ({ byName }) => byName,
-    () => undefined,
-  );
-
 async function actualType(client: MqlClient, value: string) {
   if (!/^type_\S+$/.test(value)) return value;
   return (await bySymbolicOf(client))[value] ?? value;
@@ -781,83 +770,4 @@ async function actualType(client: MqlClient, value: string) {
 export async function lookupSymbolics(client: MqlClient, names: string[]) {
   const { byName } = await symbolicNames(client);
   return Object.fromEntries(names.filter((name) => byName[name]).map((name) => [name, byName[name]]));
-}
-
-const hrefParam = (href: string, key: string) => new RegExp(`[?&]${key}=([^&\\s'"]+)`).exec(href)?.[1] ?? '';
-
-function parseAdmin(kind: string, name: string, text: string) {
-  const lineOf = (key: string) => new RegExp(`^\\s+${key}\\s+(.*?)\\s*$`, 'm').exec(text)?.[1] ?? '';
-  const href = lineOf('href');
-  return {
-    kind,
-    name,
-    label: lineOf('label'),
-    href,
-    form: hrefParam(href, 'form'),
-    table: hrefParam(href, 'table'),
-    program: hrefParam(href, 'program'),
-    children: [...text.matchAll(/^\s+(command|menu)\s+(.+?)\s*$/gm)].map(([, childKind, child]) => ({
-      kind: childKind,
-      name: child.replace(/^(['"])(.*)\1$/, '$2'),
-    })),
-  };
-}
-
-const printAdmin = (client: MqlClient, kind: string, name: string) =>
-  client.run(`print ${kind} ${quote(name)}`).then((text) => parseAdmin(kind, name, text));
-
-function parseItems(text: string) {
-  const items: Record<string, string>[] = [];
-  text.split(/\r?\n/).forEach((line) => {
-    const [key, ...rest] = line.trim().split(/\s+/);
-    const value = rest.join(' ');
-    if (/^(field|column)(#\d+)?$/i.test(key)) items.push({});
-    const item = items[items.length - 1];
-    if (!item || !key) return;
-    if (key === 'setting') item.setting = [item.setting, value].filter(Boolean).join('\n');
-    else item[key] ??= value;
-  });
-  return items;
-}
-
-const unwrap = (value: string) => value.replace(/^(['"])(.*)\1$/, '$2').replace(/^\$<(.*)>$/, '$1');
-
-export async function previewDefinition(client: MqlClient, id: string, kind: string, name: string) {
-  const [text, bySymbolic] = await Promise.all([
-    client.run(`print ${kind === 'table' ? 'table' : 'form'} ${quote(name)}${kind === 'table' ? ' system' : ''}`),
-    bySymbolicOf(client),
-  ]);
-  const actualOf = (symbolic: string) => bySymbolic[symbolic] ?? symbolic;
-  const fields = await Promise.all(
-    parseItems(text).map(async (item) => {
-      const expression = unwrap(item.businessobject ?? '');
-      const select = expression.replace(/\[(\w+_[^\]]+)\]/g, (_, symbolic: string) => `[${actualOf(symbolic)}]`);
-      const value = select
-        ? await client.run(`print bus ${checkId(id)} select ${selectable(select)} dump`).then(
-            (output) => output.trim(),
-            (error: Error) => `(${error.message})`,
-          )
-        : '';
-      const settings = item.setting ?? '';
-      return { name: unwrap(item.name ?? ''), label: unwrap(item.label ?? ''), expression, value, settings };
-    }),
-  );
-  return { kind, name, fields, text: text.trim() };
-}
-
-export async function traceScreen(client: MqlClient, id: string, type: string) {
-  const [chain, { byName }] = await Promise.all([typeChain(client, type), symbolicNames(client)]);
-  for (const name of chain) {
-    const symbolic = byName[`type ${name}`];
-    const menu = symbolic && (await printAdmin(client, 'menu', symbolic).catch(() => undefined));
-    if (!menu) continue;
-    const children = await Promise.all(
-      menu.children.map((child) =>
-        printAdmin(client, child.kind, child.name).catch(() => parseAdmin(child.kind, child.name, '')),
-      ),
-    );
-    const preview = menu.form ? await previewDefinition(client, id, 'form', menu.form).catch(() => null) : null;
-    return { chain, menu: { ...menu, children }, preview };
-  }
-  return { chain, menu: null, preview: null };
 }

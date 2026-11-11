@@ -1,6 +1,5 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import { buildJavaText, constantsClass, isJavaAction, parseConstants, type JavaTarget } from './javaSnippets';
 import { MqlClient, MqlError, type ClientStatus } from './mqlClient';
 import {
   attributeInfo,
@@ -14,7 +13,6 @@ import {
   lookupSymbolics,
   maskSecret,
   policyStates,
-  previewDefinition,
   printAccess,
   printConnection,
   printConnectionLinks,
@@ -24,7 +22,6 @@ import {
   printTriggers,
   relationshipAttributes,
   searchObjects,
-  traceScreen,
   transactionAfter,
   typeChain,
   typeInfo,
@@ -56,8 +53,6 @@ const graphCommandPrefix = '3d-mql.graph.';
 const themeKey = '3d-mql.dark';
 
 const consoleFocusKey = '3d-mql.consoleFocus';
-
-const constantsSearchMs = 5000;
 
 const objectIdPattern = /^(?:\d+\.\d+\.\d+\.\d+|[0-9a-f]{32})$/i;
 
@@ -193,15 +188,13 @@ export class GraphPanel {
     if (method === 'triggers') return printTriggers(this.client, params as TriggerSource);
     if (method === 'symbolics') return lookupSymbolics(this.client, params.names as string[]);
     if (method === 'connectionLinks') return printConnectionLinks(this.client, id);
-    if (method === 'trace') return traceScreen(this.client, id, String(params.type ?? ''));
-    if (method === 'preview') return previewDefinition(this.client, id, String(params.kind), String(params.name));
     if (method === 'openJpo') return this.openJpo(String(params.program ?? ''), String(params.method ?? ''));
     if (method === 'openDocument') return this.openDocument(String(params.content ?? ''));
     if (method === 'keybindings') return Promise.resolve(this.keybindings());
     if (method === 'openKeybindings') {
       return Promise.resolve(vscode.commands.executeCommand('workbench.action.openGlobalKeybindings', graphCommandPrefix));
     }
-    if (queryMethods.includes(method)) return this.query(method, String(params.action), params.targets as unknown[]);
+    if (queryMethods.includes(method)) return this.query(method, String(params.action), params.targets as QueryTarget[]);
     return Promise.reject(new Error(`알 수 없는 요청입니다: ${method}`));
   }
 
@@ -234,42 +227,14 @@ export class GraphPanel {
     return picked === run ? 'run' : 'cancel';
   }
 
-  private async query(method: string, action: string, targets: unknown[]) {
-    const text = isJavaAction(action)
-      ? await this.javaText(action, targets as JavaTarget[])
-      : buildQueryText(action, targets as QueryTarget[]);
+  private async query(method: string, action: string, targets: QueryTarget[]) {
+    const text = buildQueryText(action, targets);
     if (method === 'copy') {
       await vscode.env.clipboard.writeText(text);
       this.notify(`클립보드에 복사했습니다: ${text.split('\n')[0].slice(0, 80)}`);
     }
     if (method === 'insert') await this.insert(text);
     return text;
-  }
-
-  private javaText(action: string, targets: JavaTarget[]) {
-    return vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: 'Java 가이드 코드' },
-      async (progress) => {
-        progress.report({ message: `${constantsClass}.java 찾는 중...` });
-        const constants = await this.javaConstants();
-        progress.report({ message: 'MQL 로 이름 · 값 조회 중...' });
-        return buildJavaText(this.client, action, targets, constants);
-      },
-    );
-  }
-
-  private async javaConstants() {
-    const search = new vscode.CancellationTokenSource();
-    const timer = setTimeout(() => search.cancel(), constantsSearchMs);
-    const files = await Promise.resolve(
-      vscode.workspace.findFiles(`**/${constantsClass}.java`, '**/node_modules/**', 1, search.token),
-    ).catch((): vscode.Uri[] => []);
-    clearTimeout(timer);
-    search.dispose();
-    const [file] = files;
-    if (!file) return undefined;
-    const document = await vscode.workspace.openTextDocument(file);
-    return parseConstants(document.getText(), constantsClass);
   }
 
   private async insert(text: string) {

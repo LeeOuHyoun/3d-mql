@@ -361,18 +361,12 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     })
   }
 
-  const markImpact = (rules) => {
-    cyRef.value.batch(() =>
-      Object.entries(rules).forEach(([id, rule]) => cyRef.value.getElementById(id).addClass(`impact-${rule}`)),
-    )
-  }
-
   const clearMarks = () => {
     const cy = cyRef.value
     if (!cy) return
     cy.batch(() => {
       cy.elements('.diff-removed').remove()
-      cy.elements().removeClass('diff-added diff-changed impact-float impact-replicate impact-none impact-unknown')
+      cy.elements().removeClass('diff-added diff-changed')
     })
   }
 
@@ -447,7 +441,6 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     highlightIds,
     captureGhosts,
     markDiff,
-    markImpact,
     clearMarks,
     layoutType,
     destroyCy,

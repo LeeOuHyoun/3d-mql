@@ -15,12 +15,6 @@ const diffKinds = [
   { key: 'removed', label: '삭제' },
   { key: 'changed', label: '변경' },
 ]
-const impactKinds = [
-  { key: 'float', label: 'float' },
-  { key: 'replicate', label: 'replicate' },
-  { key: 'none', label: 'none' },
-  { key: 'unknown', label: '알 수 없음' },
-]
 const modifyEvents = { name: 'ChangeName', revision: 'ChangeName', owner: 'ChangeOwner', description: 'ModifyDescription' }
 const restoreFields = ['owner', 'description', 'organization', 'project']
 
@@ -52,7 +46,6 @@ export function useGraphExplorer() {
     highlightIds,
     captureGhosts,
     markDiff,
-    markImpact,
     clearMarks,
     layoutType,
     destroyCy,
@@ -263,8 +256,6 @@ export function useGraphExplorer() {
     expandDialogId.value = ''
     expand(id, options.direction, options)
   }
-
-  const copyExpandJava = (options) => runQuery('copy', 'javaExpand', [{ ...options, id: expandDialogId.value }])
 
   const linkExisting = async (ids) => {
     isLoading.value = true
@@ -795,30 +786,6 @@ export function useGraphExplorer() {
     await stageChange({ kind: 'delete', id, object, connections: uniq(edges.map((edge) => edge.id)).length })
   })
 
-  const showImpact = guarded(async (nodeId, mode) => {
-    const edges = cyRef.value
-      .getElementById(nodeId)
-      .connectedEdges(':visible')
-      .filter((e) => !e.data('inert') && !e.data('virtual'))
-    const labels = uniq(edges.map((e) => e.data('label')))
-    const definitions = await Promise.all(labels.map((label) => cachedRequest('relationship', { id: label }).catch(() => null)))
-    const ruleOf = (e) => {
-      const side = definitions[labels.indexOf(e.data('label'))]?.[e.data('source') === nodeId ? 'from' : 'to']
-      const rule = (side?.[mode] ?? '').toLowerCase()
-      return impactKinds.some((kind) => kind.key === rule) ? rule : 'unknown'
-    }
-    const rules = Object.fromEntries(edges.map((e) => [e.id(), ruleOf(e)]))
-    clearNotice()
-    markImpact(rules)
-    notice.value = {
-      title: `${mode === 'revision' ? 'Revise' : 'Clone'} 영향 · ${nameOf(nodeId)}`,
-      chips: chipsOf(impactKinds, Object.values(rules)),
-      items: [],
-    }
-  })
-
-  const traceItem = shallowRef(null)
-
   const refreshSelectedCluster = () => {
     const el = cyRef.value?.getElementById(selectedItem.value?.id)
     selectedItem.value = el?.length ? toSelectedItem(el) : null
@@ -866,11 +833,7 @@ export function useGraphExplorer() {
     }
   }
 
-  const targetData = (el) => ({
-    ...el.data(),
-    id: el.data('originalId') || el.id(),
-    ...(el.isEdge() && { fromType: el.source().data('type'), toType: el.target().data('type') }),
-  })
+  const targetData = (el) => ({ ...el.data(), id: el.data('originalId') || el.id() })
 
   const pathTargets = (menu) => {
     const pathTo = menu.target.id()
@@ -912,9 +875,6 @@ export function useGraphExplorer() {
     else if (action === 'delete') stageDelete(id)
     else if (action === 'editPending') editPending(id)
     else if (action === 'removePending') removePending(id)
-    else if (action === 'impactRevision') showImpact(id, 'revision')
-    else if (action === 'impactClone') showImpact(id, 'clone')
-    else if (action === 'trace') traceItem.value = menu.target.data()
   }
 
   const persist = debounce(() => {
@@ -1056,7 +1016,6 @@ export function useGraphExplorer() {
     goForward,
     expandDialogId,
     submitExpandOptions,
-    copyExpandJava,
     compareItems,
     pinClusterMember,
     expandCluster,
@@ -1073,6 +1032,5 @@ export function useGraphExplorer() {
     submitCreate,
     editPending,
     removePending,
-    traceItem,
   }
 }

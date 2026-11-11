@@ -4,14 +4,15 @@
 확인한 항목은 `[x]`로 바꾸고, 문제가 있으면 항목 아래 `피드백:`에 증상을 적어 주세요.
 코드를 고친 뒤에는 `local_docs/verify` 의 검증 스크립트를 다시 돌려 회귀를 확인합니다.
 
-- 기준 버전: 0.0.23
+- 기준 버전: 0.0.24
 - 표기: ⚠️ 문제가 생길 가능성이 높아 우선 확인이 필요한 항목
 
 ---
 
-## 0.0.23 변경
+## 0.0.23 ~ 0.0.24 변경
 
-상단 툴바를 나눠 하단 바를 만들었고, Java 코드 복사에 진행 알림과 cncConstants.java 찾기 시간 제한을 넣었습니다. 화면 배치는 브라우저에서 가짜 데이터로 확인했고, Java 코드 복사는 웹뷰 → 확장으로 요청이 가는 것과 가짜 MQL로 코드가 만들어지는 것까지만 확인했습니다. 실제 VS Code 에서는 확인하지 않았습니다.
+상단 툴바를 나눠 하단 바를 만들었습니다. 화면 배치는 브라우저에서 가짜 데이터로 확인했고, 실제 VS Code 에서는 확인하지 않았습니다.
+0.0.24 에서 Java 가이드 코드 복사(0.0.21 추가), 웹 화면 추적, Revise/Clone 영향 보기 기능을 제거했습니다. 노드 · 관계선 · 클러스터 우클릭, Expand 옵션, 경로 select 식, 상세 패널 속성 값 메뉴에 이 항목들이 더 이상 나오지 않아야 합니다.
 
 ### A. 상단 툴바 · 하단 바
 - [ ] 상단 툴바가 한 줄로 보이고 Type · Name · Rev 입력칸이 예전보다 넓다. 그래프 필터 칸은 조금 좁아졌다
@@ -22,18 +23,12 @@
 
 피드백:
 
-### B. Java 코드 복사 진행 알림
-- [ ] ⚠️ 노드 · 관계선 우클릭 → Java 코드 복사 → 하위 항목을 누르면 VS Code 오른쪽 아래에 "Java 가이드 코드" 알림이 `cncConstants.java 찾는 중...` → `MQL 로 이름 · 값 조회 중...` 순서로 나오고, 끝나면 상태 표시줄에 "클립보드에 복사했습니다" 가 나오며 붙여 넣을 수 있다
-- [ ] ⚠️ 여전히 복사되지 않으면 알림이 어느 단계에서 멈추는지, 빨간 Error 표시가 나오는지, 출력 창 `3D MQL` 로그의 마지막 몇 줄(`... ms > 명령`)을 피드백에 적어 주세요
-- [ ] cncConstants.java 를 5초 안에 찾지 못하면 건너뛰고 `PropertyUtil.getSchemaProperty(...)` 로 적는다
-
-피드백:
-
-### C. 드롭다운 · 스크롤바 색
+### B. 드롭다운 · 스크롤바 색
 VS Code 테마와 그래프의 라이트/다크 모드가 서로 다를 때를 확인합니다.
 - [ ] ⚠️ 다크 모드에서 새 객체 만들기의 Type 목록, 관계 이름 목록, 속성 선택 칸, Expand 옵션의 Recurse 선택 칸을 펼치면 목록이 어둡게 나온다. 라이트 모드에서는 밝게 나온다
 - [ ] ⚠️ 라이트 모드에서 스크롤바가 밝은 바탕에 회색 막대로, 다크 모드에서는 어두운 바탕에 회색 막대로 나온다 (VS Code 테마를 바꿔도 그래프 모드를 따른다)
 - [ ] `Alt+B` 로 MQL 콘솔이 열리고 닫힌다 (Alt+C 에서 바뀜)
+- [ ] ⚠️ 화면 아래쪽 노드에서 우클릭한 뒤 Copy 처럼 하위 메뉴가 있는 항목에 마우스를 올리면, 하위 메뉴가 화면 아래로 잘리지 않고 위로 올라와 전부 보인다
 
 피드백:
 
@@ -118,25 +113,6 @@ enovia-mql에서 그래프 열기, 그리고 enovia-mql 콘솔에서 옮겨 온 
 
 ---
 
-## 0. Java 가이드 코드 복사 (0.0.21)
-
-그래프에서 JPO 작성에 쓸 Java 가이드 코드를 복사합니다. 메서드 시그니처는 xerinfra.jar 로 확인했지만, 서버에서 컴파일하고 실행해 보지는 않았습니다.
-
-- [ ] ⚠️ 노드 우클릭 → Java 코드 복사 → "이 객체 값 읽기": 붙여 넣은 코드가 JPO 메서드 안에서 주석의 import 만 추가하면 컴파일되고, 실행하면 type / name / revision / current 값이 나온다
-- [ ] ⚠️ `cncConstants.java` 가 있는 프로젝트를 VS Code 에 열어 둔 창에서는 `cncConstants.RELATIONSHIP_...` 같은 상수로 나오고, 열지 않은 창에서는 `PropertyUtil.getSchemaProperty(...)` 로 나온다
-- [ ] ⚠️ 관계 선 우클릭 → "from 객체에서 to 쪽 찾기" / "to 객체에서 from 쪽 찾기": 실행 결과 건수가 주석의 MQL 을 콘솔에서 돌린 건수와 같다 (getTo / getFrom 방향 확인)
-- [ ] 클러스터 우클릭 → Java 코드 복사: 묶여 있던 객체들이 결과로 나온다
-- [ ] Expand 옵션 → "Java 코드 복사": Relationship · Type 패턴(쉼표, `*`), where 조건, Recurse, Limit 이 인자에 들어간다
-- [ ] 경로 select 식 메뉴 → "Java 코드 (getInfoList)": 결과 id 가 주석의 `print bus ... select` 결과와 같다
-- [ ] 상세 패널 속성 값 우클릭 → "Java: 속성 읽기 / 쓰기 코드 복사": 객체 속성과 관계 속성 모두 실행된다
-- [ ] "이름 표기" 주석에 나온 "cncConstants 에 추가할 줄" 을 `cncConstants.java` 에 붙여 넣으면 컴파일된다
-- [ ] 메뉴 항목 옆 에디터 삽입 아이콘을 누르면 열린 편집기의 커서 위치에 코드가 들어간다
-- [ ] 주석의 참고 문서 링크(사양서 사이트)가 열린다
-
-피드백:
-
----
-
 ## 1. MQL 연동 확장 (0.0.19 ~ 0.0.20)
 
 0.0.19 이후의 기능은 사양서에 없는 MQL 문법과 출력 형식을 일부 가정하고 만들었습니다.
@@ -164,15 +140,13 @@ MQL 콘솔에서 직접 실행합니다. 결과가 설명과 다르면 `피드�
 - [ ] ⚠️ `print bus <id> select state.signature.satisfied;` 출력이 `state[<상태>].signature[<서명>].satisfied = TRUE` 꼴이다 (States 탭의 서명)
 - [ ] ⚠️ `print bus <id> select current.access;` 출력이 `current.access = read,modify,...` 꼴이다 (Access 표시)
 - [ ] ⚠️ creator에서 `push context user <다른 사용자>; print bus <id> select current.access; pop context;` 가 암호 없이 실행된다 (다른 사용자의 access 확인)
-- [ ] ⚠️ `print relationship <관계>;` 출력에서 `from` / `to` 가 각각 한 줄을 차지하고, 그 아래 들여쓴 줄에 `type ...`, `cardinality ...`, `revision ...`, `clone ...` 이 나온다. 중복 방지 관계는 `preventduplicates` 줄이 있다 (Definition 탭, 연결 검사, Revise/Clone 영향)
-- [ ] ⚠️ `print type <Type> select derived dump;` 가 부모 type 이름 한 줄만 돌려준다 (연결 검사의 type 상속, Triggers의 상속 트리거, 웹 화면 추적)
+- [ ] ⚠️ `print relationship <관계>;` 출력에서 `from` / `to` 가 각각 한 줄을 차지하고, 그 아래 들여쓴 줄에 `type ...`, `cardinality ...`, `revision ...`, `clone ...` 이 나온다. 중복 방지 관계는 `preventduplicates` 줄이 있다 (Definition 탭, 연결 검사)
+- [ ] ⚠️ `print type <Type> select derived dump;` 가 부모 type 이름 한 줄만 돌려준다 (연결 검사의 type 상속, Triggers의 상속 트리거)
 - [ ] ⚠️ `print policy <Policy>;` 출력에서 state가 `state <이름>` 줄로 시작하고, 트리거가 `PromoteAction:emxTriggerManager(<트리거명> ...)` 꼴로 나온다. `print type <Type>;`, `print relationship <관계>;` 의 트리거도 같은 꼴이다 (Triggers 탭)
 - [ ] ⚠️ `temp query bus "eService Trigger Program Parameters" "<트리거명1>,<트리거명2>" * select id current "attribute[eService Program Name]" "attribute[eService Method Name]" "attribute[eService Sequence Number]" dump |;` 가 두 이름을 모두 찾는다 (Triggers 탭의 JPO 목록)
 - [ ] emxTriggerManager의 input에서 트리거명 구분자가 공백인지 쉼표인지 (트리거 추가 문장 복사)
-- [ ] ⚠️ `list property on program eServiceSchemaVariableMapping.tcl;` 이 실행되고, 각 줄이 `<심볼릭 이름> on program eServiceSchemaVariableMapping.tcl to <종류> <이름>` 꼴이다 (심볼릭 이름 표시, `type_...` 검색, 웹 화면 추적)
+- [ ] ⚠️ `list property on program eServiceSchemaVariableMapping.tcl;` 이 실행되고, 각 줄이 `<심볼릭 이름> on program eServiceSchemaVariableMapping.tcl to <종류> <이름>` 꼴이다 (심볼릭 이름 표시, `type_...` 검색)
 - [ ] ⚠️ `print connection <connection id> select fromrel.id torel.id;` 와 `print connection <connection id> select frommid.id tomid.id;` 가 오류 없이 실행된다 (Links 탭)
-- [ ] ⚠️ `print menu type_<심볼릭>;` 출력에 `href ...` 줄이 있고, 하위 항목이 `command <이름>` / `menu <이름>` 줄로 나온다 (웹 화면 추적)
-- [ ] ⚠️ `print form <폼 이름>;` 출력에서 필드가 `field` 줄로 시작하고 그 아래 `name ...`, `label ...`, `businessobject ...` 줄이 나온다. `print table <테이블 이름> system;` 은 `column` 줄로 시작한다 (웹 화면 추적의 미리보기)
 - [ ] ⚠️ `start transaction;` → 테스트용 `connect` → `abort transaction;` 순서로 실행하면 연결이 남지 않는다 (트랜잭션으로 미리보기)
 - [ ] ⚠️ `print type <Type> select policy attribute;` 출력이 `policy = <이름>` · `attribute = <이름>` 줄로 나오고, `print type <Type> select abstract;` 가 `abstract = TRUE` 또는 `FALSE` 로 나온다 (생성 폼의 policy · 속성 · abstract 경고)
 - [ ] ⚠️ `print attribute <속성> select type default range;` 출력이 `type = ...`, `default = ...`, `range = = <값>` 꼴이다 (속성 입력칸의 선택 목록 · 기본값)
@@ -264,12 +238,11 @@ MQL 콘솔에서 직접 실행합니다. 결과가 설명과 다르면 `피드�
 
 피드백:
 
-### 1-7. 관계 정의 · 연결 검사 · Revise/Clone 영향
+### 1-7. 관계 정의 · 연결 검사
 - [ ] 관계 선을 선택하면 Definition 탭에 from / to 의 type · cardinality · revision · clone 과 중복 연결 여부가 표로 나온다
 - [ ] 표로 읽지 못한 관계는 "정의 원문" 이 펼쳐져 나온다
 - [ ] ⚠️ 연결 문장 만들기에서 허용되지 않는 type 조합, 반대 방향이면 경고가 나온다. 하위 type은 상위 type이 허용되면 경고가 없다
 - [ ] cardinality one 인 쪽에 이미 연결이 있으면 경고가 나온다
-- [ ] 노드 우클릭 → "Revise/Clone 영향 보기" 를 누르면 연결선이 float(주황) · replicate(초록) · none(흐리게)으로 표시되고, 좌측 위에 건수가 나온다
 
 피드백:
 
@@ -308,15 +281,6 @@ MQL 콘솔에서 직접 실행합니다. 결과가 설명과 다르면 `피드�
 - [ ] 마디를 선택하면 상세 패널에 그 connection 의 속성이 나오고, 우클릭하면 관계 메뉴가 나온다
 - [ ] 레이아웃(Radial · Flowchart)을 바꿔도 마디와 선이 어색하지 않다
 - [ ] 새로고침 뒤에도 마디가 유지된다
-
-피드백:
-
-### 1-12. 웹 화면 추적
-- [ ] ⚠️ 노드 우클릭 → "웹 화면 추적..." 에서 type 상속과 Tree 메뉴(`type_...`), 메뉴 항목(command · menu)이 나온다
-- [ ] 메뉴 항목의 `form: ...` · `table: ...` 표시를 누르면 그 정의의 필드와 이 객체로 평가한 값이 나온다
-- [ ] ⚠️ `$<attribute[attribute_...].value>` 처럼 심볼릭 이름이 든 식도 값이 나온다
-- [ ] 프로그램 필드처럼 식이 없는 항목은 "(프로그램 · 기타 필드)" 로 나온다
-- [ ] 필드를 읽지 못하면 "정의 원문" 이 대신 나온다
 
 피드백:
 

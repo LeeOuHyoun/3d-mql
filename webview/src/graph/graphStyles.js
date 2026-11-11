@@ -225,17 +225,9 @@ export const getCytoscapeStyle = (isDarkVal, layoutVal) => [
       'line-style': 'dotted',
     },
   },
-  ...markStyles(
-    '#16a34a',
-    'edge[pending = "add"], edge.diff-added, edge.impact-replicate',
-    'node[pending = "add"], node.diff-added',
-  ),
+  ...markStyles('#16a34a', 'edge[pending = "add"], edge.diff-added', 'node[pending = "add"], node.diff-added'),
   ...markStyles('#dc2626', 'edge[pending = "remove"], edge.diff-removed', 'node[pending = "remove"], node.diff-removed'),
-  ...markStyles(
-    '#d97706',
-    'edge[pending = "change"], edge.impact-float',
-    'node[pending = "change"], node.diff-changed',
-  ),
+  ...markStyles('#d97706', 'edge[pending = "change"]', 'node[pending = "change"], node.diff-changed'),
   {
     selector: 'edge[pending = "add"], edge[pending = "remove"], edge.diff-removed',
     style: {
@@ -252,12 +244,6 @@ export const getCytoscapeStyle = (isDarkVal, layoutVal) => [
     selector: '.diff-removed',
     style: {
       opacity: 0.55,
-    },
-  },
-  {
-    selector: 'edge.impact-none, edge.impact-unknown',
-    style: {
-      opacity: 0.35,
     },
   },
   {

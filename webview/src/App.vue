@@ -17,13 +17,10 @@ import {
   Minimize,
   Link,
   Unlink,
-  GitFork,
-  AppWindow,
   Pencil,
   PackagePlus,
   Trash2,
   Undo2,
-  FileCode,
 } from '@lucide/vue'
 import { onMessage } from './api.js'
 import { useGraphExplorer } from './composables/useGraphExplorer.js'
@@ -46,7 +43,6 @@ import ConnectDialog from './components/ConnectDialog.vue'
 import ObjectEditDialog from './components/ObjectEditDialog.vue'
 import ObjectCreateDialog from './components/ObjectCreateDialog.vue'
 import ChangeBasketDialog from './components/ChangeBasketDialog.vue'
-import ScreenTraceDialog from './components/ScreenTraceDialog.vue'
 import ShortcutGuideDialog from './components/ShortcutGuideDialog.vue'
 
 const {
@@ -103,7 +99,6 @@ const {
   goForward,
   expandDialogId,
   submitExpandOptions,
-  copyExpandJava,
   compareItems,
   pinClusterMember,
   expandCluster,
@@ -120,7 +115,6 @@ const {
   submitCreate,
   editPending,
   removePending,
-  traceItem,
 } = useGraphExplorer()
 
 const { changes, isBasketOpen, transaction, finishTransaction } = basket
@@ -211,14 +205,6 @@ const queryExtras = (action) => [
 const copyItem = (action, label) => ({ action: `copy:${action}`, label, icon: Copy, color: copyColor })
 const queryItem = (action, label) => ({ ...copyItem(action, label), icon: Terminal, extras: queryExtras(action) })
 const copyGroup = (label, children) => ({ action: 'copy', label, icon: Copy, color: copyColor, children })
-const javaColor = 'text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/40'
-const javaItem = (action, label) => ({
-  ...copyItem(action, label),
-  icon: FileCode,
-  color: javaColor,
-  extras: [{ action: `insert:${action}`, icon: TextCursorInput, title: '에디터에 삽입' }],
-})
-const javaGroup = (children) => ({ action: 'java', label: 'Java 코드 복사', icon: FileCode, color: javaColor, children })
 const linkExistingItem = (label) => ({ action: 'linkExisting', label, icon: Link2, color: violetColor })
 const busQueryItems = [
   queryItem('printBus', 'print bus'),
@@ -235,19 +221,8 @@ const pathGroup = (label) => ({
     copyItem('pathExpr', 'select 식'),
     copyItem('pathColumn', '컬럼 식 $<…>'),
     copyItem('pathWhere', 'where 조건'),
-    javaItem('pathJava', 'Java 코드 (getInfoList)'),
   ],
 })
-const impactGroup = {
-  action: 'impact',
-  label: 'Revise/Clone 영향 보기',
-  icon: GitFork,
-  color: violetColor,
-  children: [
-    { action: 'impactRevision', label: 'Revise 했을 때', icon: GitFork, color: violetColor },
-    { action: 'impactClone', label: 'Clone 했을 때', icon: Copy, color: violetColor },
-  ],
-}
 const redColor = 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/40'
 const removePendingItem = { action: 'removePending', label: '바구니에서 빼기', icon: Undo2, color: redColor }
 
@@ -260,10 +235,7 @@ const graphMenuItems = {
     linkExistingItem('Link Existing Nodes'),
     { action: 'edit', label: '편집 (수정 문장 만들기)...', icon: Pencil, color: violetColor },
     { action: 'createLinked', label: '새 객체 만들어 연결...', icon: PackagePlus, color: violetColor },
-    impactGroup,
-    { action: 'trace', label: '웹 화면 추적...', icon: AppWindow, color: violetColor },
     pathGroup('기준 객체에서 여기까지의 select 식'),
-    javaGroup([javaItem('javaObject', '이 객체 값 읽기 (getInfo)')]),
     copyGroup('Copy', [
       copyItem('id', 'Object ID'),
       copyItem('tnr', 'Type Name Rev'),
@@ -277,18 +249,10 @@ const graphMenuItems = {
     queryItem('printConnection', 'print connection'),
     queryItem('expandRel', 'expand bus (from, rel type)'),
     queryItem('queryConnection', 'query connection'),
-    javaGroup([
-      javaItem('javaChildren', 'from 객체에서 to 쪽 찾기 (getRelatedObjects)'),
-      javaItem('javaParents', 'to 객체에서 from 쪽 찾기 (getRelatedObjects)'),
-    ]),
     { action: 'edit', label: '관계 속성 편집...', icon: Pencil, color: violetColor },
     { action: 'disconnect', label: '연결 해제 문장 만들기', icon: Unlink, color: redColor },
   ],
-  cluster: [
-    copyItem('memberIds', 'Copy Member IDs'),
-    queryItem('expandCluster', 'expand bus (rel type)'),
-    javaItem('javaCluster', 'Java 코드 복사 (getRelatedObjects)'),
-  ],
+  cluster: [copyItem('memberIds', 'Copy Member IDs'), queryItem('expandCluster', 'expand bus (rel type)')],
   pendingNode: [{ action: 'editPending', label: '생성 문장 고치기...', icon: Pencil, color: violetColor }, removePendingItem],
   pendingEdge: [removePendingItem],
 }
@@ -516,7 +480,6 @@ const contextMenuItems = computed(() => {
         v-if="expandDialogId"
         :label="expandDialogId"
         @submit="submitExpandOptions"
-        @copyJava="copyExpandJava"
         @close="expandDialogId = ''"
       />
     </Transition>
@@ -546,9 +509,6 @@ const contextMenuItems = computed(() => {
     </Transition>
     <Transition name="dialog">
       <ChangeBasketDialog v-if="isBasketOpen" :basket="basket" @close="isBasketOpen = false" />
-    </Transition>
-    <Transition name="dialog">
-      <ScreenTraceDialog v-if="traceItem" :item="traceItem" @close="traceItem = null" />
     </Transition>
     <Transition name="dialog">
       <ShortcutGuideDialog v-if="isShortcutGuideOpen" @close="isShortcutGuideOpen = false" />

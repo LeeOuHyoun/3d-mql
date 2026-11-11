@@ -27,6 +27,17 @@ const top = computed(() => Math.max(0, Math.min(props.menu.y, windowHeight.value
 const isSubmenuFlipped = computed(() => left.value + width.value * 2 > windowWidth.value)
 
 const openKey = ref('')
+const rowTop = ref(0)
+const submenuRefs = ref([])
+const { height: submenuHeight } = useElementSize(() => submenuRefs.value[0], undefined, { box: 'border-box' })
+const submenuTop = computed(() =>
+  Math.max(-rowTop.value, Math.min(-4, windowHeight.value - 8 - rowTop.value - submenuHeight.value)),
+)
+
+const openSubmenu = (e, item) => {
+  openKey.value = item.action
+  rowTop.value = e.currentTarget.getBoundingClientRect().top
+}
 
 const handleSelect = (item) => {
   if (item.children) openKey.value = item.action
@@ -46,15 +57,17 @@ const panelClass =
     :style="{ left: `${left}px`, top: `${top}px` }"
     @contextmenu.prevent
   >
-    <div v-for="item in props.items" :key="item.action" class="relative" @mouseenter="openKey = item.action">
+    <div v-for="item in props.items" :key="item.action" class="relative" @mouseenter="openSubmenu($event, item)">
       <ContextMenuItem :item="item" @select="handleSelect" @action="emitAction" />
       <div
         v-if="item.children && openKey === item.action"
+        ref="submenuRefs"
         :class="[
-          'absolute -top-1 animate-pop-in',
+          'absolute animate-pop-in',
           isSubmenuFlipped ? 'right-full mr-1 origin-top-right' : 'left-full ml-1 origin-top-left',
           panelClass,
         ]"
+        :style="{ top: `${submenuTop}px` }"
       >
         <ContextMenuItem
           v-for="child in item.children"
