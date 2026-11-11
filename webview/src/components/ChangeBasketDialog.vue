@@ -132,7 +132,7 @@ const codeClass = 'm-0 font-mono text-[11px] whitespace-pre-wrap break-all'
     </div>
     <div class="flex-1 min-h-0 overflow-auto">
       <div v-if="!changes.length" class="p-6 text-gray-400 italic text-center">
-        바구니가 비어 있습니다. 툴바의 새 객체 버튼이나 노드 우클릭 메뉴로 생성 · 편집 · 삭제 · 연결 문장을 만들거나, 상세
+        바구니가 비어 있습니다. 하단 바의 새 객체 버튼이나 노드 우클릭 메뉴로 생성 · 편집 · 삭제 · 연결 문장을 만들거나, 상세
         패널에서 값 수정 · promote · 연결 해제 문장을 담을 수 있습니다.
       </div>
       <div

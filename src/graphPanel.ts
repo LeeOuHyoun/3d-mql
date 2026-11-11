@@ -57,6 +57,8 @@ const themeKey = '3d-mql.dark';
 
 const consoleFocusKey = '3d-mql.consoleFocus';
 
+const constantsSearchMs = 5000;
+
 const objectIdPattern = /^(?:\d+\.\d+\.\d+\.\d+|[0-9a-f]{32})$/i;
 
 export class GraphPanel {
@@ -234,7 +236,7 @@ export class GraphPanel {
 
   private async query(method: string, action: string, targets: unknown[]) {
     const text = isJavaAction(action)
-      ? await buildJavaText(this.client, action, targets as JavaTarget[], await this.javaConstants())
+      ? await this.javaText(action, targets as JavaTarget[])
       : buildQueryText(action, targets as QueryTarget[]);
     if (method === 'copy') {
       await vscode.env.clipboard.writeText(text);
@@ -244,8 +246,27 @@ export class GraphPanel {
     return text;
   }
 
+  private javaText(action: string, targets: JavaTarget[]) {
+    return vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: 'Java 가이드 코드' },
+      async (progress) => {
+        progress.report({ message: `${constantsClass}.java 찾는 중...` });
+        const constants = await this.javaConstants();
+        progress.report({ message: 'MQL 로 이름 · 값 조회 중...' });
+        return buildJavaText(this.client, action, targets, constants);
+      },
+    );
+  }
+
   private async javaConstants() {
-    const [file] = await vscode.workspace.findFiles(`**/${constantsClass}.java`, '**/node_modules/**', 1);
+    const search = new vscode.CancellationTokenSource();
+    const timer = setTimeout(() => search.cancel(), constantsSearchMs);
+    const files = await Promise.resolve(
+      vscode.workspace.findFiles(`**/${constantsClass}.java`, '**/node_modules/**', 1, search.token),
+    ).catch((): vscode.Uri[] => []);
+    clearTimeout(timer);
+    search.dispose();
+    const [file] = files;
     if (!file) return undefined;
     const document = await vscode.workspace.openTextDocument(file);
     return parseConstants(document.getText(), constantsClass);

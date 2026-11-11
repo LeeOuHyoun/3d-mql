@@ -30,6 +30,7 @@ import { useGraphExplorer } from './composables/useGraphExplorer.js'
 import { useMqlConsole } from './composables/useMqlConsole.js'
 import { useMinimapLayout } from './composables/useMinimapLayout.js'
 import GraphToolbar from './components/GraphToolbar.vue'
+import GraphStatusBar from './components/GraphStatusBar.vue'
 import SearchPanel from './components/SearchPanel.vue'
 import RelationPanel from './components/RelationPanel.vue'
 import DetailPanel from './components/DetailPanel.vue'
@@ -324,37 +325,20 @@ const contextMenuItems = computed(() => {
       v-model:isSearchPanelOpen="isSearchPanelOpen"
       v-model:isRelationPanelOpen="isRelationPanelOpen"
       v-model:isDetailPanelOpen="isDetailPanelOpen"
-      v-model:isMinimapOpen="isMinimapOpen"
-      v-model:isConsoleOpen="isConsoleOpen"
       v-model:graphFilter="graphFilter"
-      v-model:layoutType="layoutType"
       :form="searchForm"
       :isSearching="isSearching"
       :isLoading="isLoading"
-      :isDark="isDark"
-      :connection="connection"
-      :context="context"
       :loadedAt="loadedAt"
       :isStale="isStale"
-      :changeCount="changes.length"
-      :minimapPosition="minimapPosition"
       :history="rootHistory"
       :historyIndex="historyIndex"
       @search="onSearch"
       @refresh="refresh"
-      @basket="isBasketOpen = true"
-      @create="openCreate()"
-      @minimapPosition="setMinimapPosition"
-      @resetMinimap="resetMinimap"
-      @resetView="resetView"
-      @fit="fitView"
       @clear="clearGraph"
-      @toggleTheme="toggleTheme"
-      @reconnect="reconnect"
       @back="goBack"
       @forward="goForward"
       @go="goHistory"
-      @shortcuts="isShortcutGuideOpen = true"
     />
     <Transition name="pop">
       <div
@@ -448,7 +432,7 @@ const contextMenuItems = computed(() => {
               <div
                 ref="minimapHandle"
                 class="h-4 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing bg-gray-200/60 dark:bg-white/5 hover:bg-gray-300/60 dark:hover:bg-white/10 transition-colors"
-                title="끌어서 옮기기 · 툴바 미니맵 버튼 우클릭: 위치 고정"
+                title="끌어서 옮기기 · 하단 바 미니맵 버튼 우클릭: 위치 고정"
               >
                 <div class="w-8 h-0.5 rounded-full bg-gray-400/60 dark:bg-white/20"></div>
               </div>
@@ -500,6 +484,25 @@ const contextMenuItems = computed(() => {
         @attach="attachConnections"
       />
     </div>
+    <GraphStatusBar
+      v-model:isMinimapOpen="isMinimapOpen"
+      v-model:isConsoleOpen="isConsoleOpen"
+      v-model:layoutType="layoutType"
+      :isDark="isDark"
+      :connection="connection"
+      :context="context"
+      :minimapPosition="minimapPosition"
+      :changeCount="changes.length"
+      @basket="isBasketOpen = true"
+      @create="openCreate()"
+      @minimapPosition="setMinimapPosition"
+      @resetMinimap="resetMinimap"
+      @resetView="resetView"
+      @fit="fitView"
+      @toggleTheme="toggleTheme"
+      @reconnect="reconnect"
+      @shortcuts="isShortcutGuideOpen = true"
+    />
     <GraphTooltip v-if="tooltip" :tooltip="tooltip" />
     <ContextMenu
       v-if="contextMenu && contextMenuItems.length"
