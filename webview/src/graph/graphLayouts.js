@@ -1,6 +1,7 @@
 export const EDGE_LENGTH = 120
+export const LARGE_GRAPH_NODES = 1000
 
-export const getLayoutOptions = (layoutType) => {
+export const getLayoutOptions = (layoutType, nodeCount = 0) => {
   if (layoutType === 'flow-tb' || layoutType === 'flow-lr') {
     return {
       name: 'dagre',
@@ -21,6 +22,6 @@ export const getLayoutOptions = (layoutType) => {
     edgeElasticity: 0.45,
     nestingFactor: 0.1,
     gravity: 0.25,
-    numIter: 1000,
+    numIter: nodeCount > LARGE_GRAPH_NODES ? 300 : 1000,
   }
 }

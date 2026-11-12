@@ -277,27 +277,42 @@ export async function searchObjects(client: MqlClient, params: SearchParams, lim
   return dumpRows(text, 5).map(([type, name, revision, id, current]) => ({ id, type, name, revision, current }));
 }
 
-export async function expandObject(client: MqlClient, id: string, direction: Direction, options: ExpandOptions = {}) {
-  if (direction !== 'both') return expandDirection(client, id, direction, options);
-  const results = await Promise.all([
-    expandDirection(client, id, 'from', options),
-    expandDirection(client, id, 'to', options),
-  ]);
-  return { nodes: results.flatMap((item) => item.nodes), edges: results.flatMap((item) => item.edges) };
+export async function expandObject(
+  client: MqlClient,
+  id: string,
+  direction: Direction,
+  options: ExpandOptions,
+  defaultLimit: number,
+) {
+  const limit = Math.floor(Number(options.limit)) > 0 ? Math.floor(Number(options.limit)) : defaultLimit;
+  const directions: ('from' | 'to')[] = direction === 'both' ? ['from', 'to'] : [direction];
+  const results = await Promise.all(directions.map((item) => expandDirection(client, id, item, options, limit)));
+  return {
+    nodes: results.flatMap((item) => item.nodes),
+    edges: results.flatMap((item) => item.edges),
+    truncated: results.some((item) => item.truncated),
+    limit,
+  };
 }
 
-async function expandDirection(client: MqlClient, id: string, direction: 'from' | 'to', options: ExpandOptions) {
-  const limit = Number(options.limit) > 0 ? ` limit ${Math.floor(Number(options.limit))}` : '';
+async function expandDirection(
+  client: MqlClient,
+  id: string,
+  direction: 'from' | 'to',
+  options: ExpandOptions,
+  limit: number,
+) {
   const busSelect = `select bus type id current${whereClause(options.busWhere)}`;
   const relSelect = `select rel type id${whereClause(options.relWhere)}`;
   const text = await client.run(
-    `${expandCommand(id, direction, options)} ${busSelect} ${relSelect} dump ${quote(separator)}${limit}`,
+    `${expandCommand(id, direction, options)} ${busSelect} ${relSelect} dump ${quote(separator)} limit ${limit + 1}`,
   );
+  const rows = dumpRows(text, 11);
   const isEnd = options.recurse === 'end';
   const nodes: ObjectSummary[] = [];
   const edges: GraphEdge[] = [];
   const parents = [id];
-  dumpRows(text, 11).forEach((fields) => {
+  rows.slice(0, limit).forEach((fields) => {
     const [levelText, relType, , type, name, revision] = fields;
     const level = isEnd ? 1 : Math.max(1, Number(levelText) || 1);
     const parentId = parents[level - 1] ?? id;
@@ -317,7 +332,7 @@ async function expandDirection(client: MqlClient, id: string, direction: 'from' 
       ...(isEnd && { virtual: true }),
     });
   });
-  return { nodes, edges };
+  return { nodes, edges, truncated: rows.length > limit };
 }
 
 export async function printObject(client: MqlClient, id: string) {
@@ -385,6 +400,11 @@ export async function printAccess(client: MqlClient, id: string, user: string) {
 export async function printConnection(client: MqlClient, id: string) {
   const text = await client.run(printConnectionCommand(id));
   return splitFields(parseKeyValues(text));
+}
+
+export async function countConnections(client: MqlClient, id: string) {
+  const fields = parseKeyValues(await client.run(`print bus ${checkId(id)} select from.id to.id`));
+  return new Set(fields.filter((field) => /^(from|to)(\[.*\])?\.id$/.test(field.key)).map((field) => field.value)).size;
 }
 
 async function connectionEnds(client: MqlClient, id: string): Promise<GraphEdge> {

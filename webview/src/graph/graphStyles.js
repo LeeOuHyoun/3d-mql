@@ -35,6 +35,13 @@ export const getCytoscapeStyle = (isDarkVal, layoutVal) => [
     },
   },
   {
+    selector: 'node[?isTruncated]',
+    style: {
+      'border-width': 6,
+      'border-style': 'double',
+    },
+  },
+  {
     selector: 'node[?isExploring]',
     style: {
       'border-width': 4,

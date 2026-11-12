@@ -211,6 +211,12 @@
           "type": "number",
           "default": 200,
           "description": "객체 검색 결과 최대 건수입니다."
+        },
+        "3d-mql.expandLimit": {
+          "type": "number",
+          "default": 500,
+          "minimum": 1,
+          "description": "그래프를 펼칠 때 방향별로 가져오는 최대 연결 수입니다. Expand 옵션의 Limit이 0이면 이 값을 씁니다. 넘는 연결은 객체 ID로 검색해 기준 객체로 열어 보세요."
         }
       }
     }

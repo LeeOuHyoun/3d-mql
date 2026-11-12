@@ -1,5 +1,5 @@
 <script setup>
-import { X, Copy, Crosshair } from '@lucide/vue'
+import { X, Copy, Crosshair, ListFilter } from '@lucide/vue'
 import ContextMenu from './ContextMenu.vue'
 import { usePanelResize } from '../composables/usePanelResize.js'
 
@@ -7,6 +7,7 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   results: { type: Array, default: () => [] },
   limit: { type: Number, default: 0 },
+  where: { type: String, default: '' },
   root: { type: Object, default: null },
 })
 const emit = defineEmits(['select', 'close'])
@@ -73,6 +74,17 @@ const handleMenuAction = (action) => {
             {{ props.root.name }} <span class="text-gray-400">{{ props.root.revision }}</span>
           </span>
           <span class="text-[11px] text-gray-500 dark:text-[#5c6370] truncate">{{ props.root.type }}</span>
+        </div>
+      </div>
+      <div
+        v-if="props.where"
+        class="px-4 py-2 flex items-start gap-2 text-[11px] bg-[#61afef]/10 border-b border-gray-200 dark:border-[#3e4451] shrink-0"
+        :title="props.where"
+      >
+        <ListFilter :size="14" class="mt-0.5 shrink-0 text-[#4b8bca] dark:text-[#61afef]" />
+        <div class="min-w-0 flex flex-col gap-0.5">
+          <span class="text-[10px] font-semibold text-[#4b8bca] dark:text-[#61afef]">Where 조건 적용</span>
+          <span class="font-mono text-gray-700 dark:text-[#abb2bf] break-all line-clamp-3">{{ props.where }}</span>
         </div>
       </div>
       <div

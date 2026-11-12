@@ -34,10 +34,7 @@ const recurseModes = [
   { value: 'end', label: '말단만 (end)' },
 ]
 
-const needsLimit = computed(() => options.value.recurseMode !== 'level' && !(options.value.limit > 0))
-
 const handleSubmit = () => {
-  if (needsLimit.value) return
   const { recurseMode, recurse, ...rest } = options.value
   emit('submit', { ...rest, recurse: recurseMode === 'level' ? recurse : recurseMode })
 }
@@ -95,12 +92,12 @@ const labelClass = 'flex flex-col gap-1 font-semibold text-gray-500 dark:text-[#
           <input v-model.number="options.recurse" type="number" min="1" max="10" :class="inputClass" />
         </label>
         <label :class="[labelClass, 'flex-1']">
-          Limit (0 = 제한 없음)
+          Limit (0 = 설정값)
           <input v-model.number="options.limit" type="number" min="0" :class="inputClass" />
         </label>
       </div>
-      <div v-if="needsLimit" class="text-amber-600 dark:text-amber-400">
-        all · end 전개는 결과가 매우 커질 수 있어 Limit을 1 이상으로 지정해야 합니다.
+      <div class="text-gray-400">
+        방향별로 Limit 건까지만 가져옵니다. 넘는 연결은 객체 ID로 검색해 기준 객체로 열어 보세요.
       </div>
       <div v-if="options.recurseMode === 'end'" class="text-gray-400">
         말단 객체만 조회하고, 기준 객체와는 점선(가상 연결)으로 잇습니다.
@@ -115,8 +112,7 @@ const labelClass = 'flex flex-col gap-1 font-semibold text-gray-500 dark:text-[#
         </button>
         <button
           type="submit"
-          :disabled="needsLimit"
-          class="h-7 px-3 rounded-md border-none bg-[#61afef] hover:bg-[#4b8bca] text-white text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-default"
+          class="h-7 px-3 rounded-md border-none bg-[#61afef] hover:bg-[#4b8bca] text-white text-xs font-semibold cursor-pointer"
         >
           확장
         </button>

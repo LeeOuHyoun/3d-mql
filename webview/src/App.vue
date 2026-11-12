@@ -64,6 +64,7 @@ const {
   searchForm,
   searchResults,
   searchLimit,
+  searchWhere,
   isSearching,
   isSearchPanelOpen,
   onSearch,
@@ -331,6 +332,7 @@ const contextMenuItems = computed(() => {
         :open="isSearchPanelOpen"
         :results="searchResults"
         :limit="searchLimit"
+        :where="searchWhere"
         :root="rootItem"
         @select="loadRoot"
         @close="isSearchPanelOpen = false"
@@ -366,6 +368,7 @@ const contextMenuItems = computed(() => {
               v-if="notice"
               :notice="notice"
               @focus="focusNotice"
+              @action="notice.action.run()"
               @close="clearNotice"
               @mouseenter="hideTooltip"
             />

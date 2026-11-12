@@ -5,6 +5,7 @@ import {
   attributeInfo,
   buildChange,
   buildQueryText,
+  countConnections,
   expandObject,
   forgetSymbolics,
   hasDelete,
@@ -183,7 +184,11 @@ export class GraphPanel {
       const limit = vscode.workspace.getConfiguration('3d-mql').get<number>('searchLimit', 200);
       return searchObjects(this.client, params as SearchParams, limit).then((results) => ({ results, limit }));
     }
-    if (method === 'expand') return expandObject(this.client, id, params.direction as Direction, params as ExpandOptions);
+    if (method === 'expand') {
+      const limit = vscode.workspace.getConfiguration('3d-mql').get<number>('expandLimit', 500);
+      return expandObject(this.client, id, params.direction as Direction, params as ExpandOptions, limit);
+    }
+    if (method === 'connectionCount') return countConnections(this.client, id);
     if (method === 'object') return printObject(this.client, id);
     if (method === 'objectExtra') return printObjectExtra(this.client, id);
     if (method === 'connection') return printConnection(this.client, id);

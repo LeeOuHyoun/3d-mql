@@ -13,6 +13,7 @@ import {
   Clock,
   Check,
   DatabaseBackup,
+  ListFilter,
 } from '@lucide/vue'
 import ContextMenu from './ContextMenu.vue'
 
@@ -71,8 +72,27 @@ const fields = [
   { key: 'type', placeholder: 'Type 또는 Object ID', class: 'flex-1' },
   { key: 'name', placeholder: 'Name', class: 'flex-1' },
   { key: 'revision', placeholder: 'Rev', class: 'flex-1' },
-  { key: 'where', placeholder: 'Where 조건', class: 'flex-2' },
 ]
+
+const isWhereOpen = ref(false)
+const whereBox = ref(null)
+const whereButton = ref(null)
+const whereInput = ref(null)
+const hasWhere = computed(() => !!props.form.where.trim())
+const whereTitle = computed(() => (hasWhere.value ? `Where 조건 적용 중:\n${props.form.where.trim()}` : 'Where 조건'))
+
+watch(whereInput, (el) => el?.focus())
+onClickOutside(whereBox, () => (isWhereOpen.value = false), { ignore: [whereButton] })
+
+const submitWhere = () => {
+  isWhereOpen.value = false
+  emit('search')
+}
+
+const clearWhere = () => {
+  props.form.where = ''
+  whereInput.value?.focus()
+}
 const inputClass =
   'h-7 px-2 text-xs rounded-md border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#21252b] text-gray-800 dark:text-[#abb2bf] outline-none focus:border-[#61afef] placeholder:text-gray-400 dark:placeholder:text-[#5c6370]'
 const iconBtnClass =
@@ -133,6 +153,45 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         :class="[inputClass, field.class, 'min-w-0']"
         spellcheck="false"
       />
+      <div class="relative flex items-center">
+        <button
+          ref="whereButton"
+          type="button"
+          :class="[iconBtnClass, 'relative', (hasWhere || isWhereOpen) && activeClass]"
+          :title="whereTitle"
+          @click="isWhereOpen = !isWhereOpen"
+        >
+          <ListFilter :size="16" />
+          <span v-if="hasWhere" class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-500" />
+        </button>
+        <div
+          v-if="isWhereOpen"
+          ref="whereBox"
+          class="absolute top-full right-0 mt-1 z-30 w-96 p-2 flex flex-col gap-1.5 rounded-lg border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#282c34] shadow-xl"
+        >
+          <textarea
+            ref="whereInput"
+            v-model="props.form.where"
+            rows="4"
+            placeholder="Where 조건 (예: current=='Released' && owner=='creator')"
+            :class="[inputClass, 'h-auto py-1.5 resize-y font-mono']"
+            spellcheck="false"
+            @keydown.enter.prevent="submitWhere"
+            @keydown.esc.stop="isWhereOpen = false"
+          />
+          <div class="flex items-center gap-2 text-[11px] text-gray-400 dark:text-[#5c6370]">
+            <span class="flex-1">Enter 검색 · Esc 닫기</span>
+            <button
+              v-if="hasWhere"
+              type="button"
+              class="px-1.5 border-none bg-transparent text-gray-500 dark:text-[#abb2bf] hover:text-[#61afef] cursor-pointer"
+              @click="clearWhere"
+            >
+              지우기
+            </button>
+          </div>
+        </div>
+      </div>
       <button
         type="submit"
         :disabled="props.isSearching"

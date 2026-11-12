@@ -3,7 +3,7 @@ import fcose from 'cytoscape-fcose'
 import dagre from 'cytoscape-dagre'
 import { debounce, isEqual, partition, uniqBy } from 'lodash-es'
 import { getCytoscapeStyle } from '@/graph/graphStyles.js'
-import { getLayoutOptions } from '@/graph/graphLayouts.js'
+import { getLayoutOptions, LARGE_GRAPH_NODES } from '@/graph/graphLayouts.js'
 import { placeAdded } from '@/graph/graphPlacement.js'
 import { processRadialElems, toDisplayLabel } from '@/graph/graphDataProcessor.js'
 import { useGraphEvents } from './useGraphEvents.js'
@@ -24,6 +24,11 @@ const ANIMATE_MAX_NODES = 300
 const DOCK_ANIMATION_MS = 200
 const PENDING_OFFSET_Y = 110
 const PENDING_SPREAD = 160
+const WHEEL_ZOOM_PER_PIXEL = 0.0014
+const WHEEL_NOTCH_MIN = 40
+const WHEEL_ACCEL_MS = 200
+const WHEEL_ACCEL_STEP = 0.5
+const WHEEL_ACCEL_MAX = 4
 
 export function useGraphCytoscape(isDark, lastExpansionMode) {
   const cyRef = shallowRef(null)
@@ -36,6 +41,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   let activeLayout = null
   let settling = null
   let wheelHandler = null
+  let wheelStreak = { at: 0, sign: 0, boost: 1 }
   const { tooltip, contextMenu, bindGraphEvents, hideTooltip, hideContextMenu } = useGraphEvents()
 
   const stopLayout = () => {
@@ -60,7 +66,12 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   }
 
   const computePositions = () => {
-    const options = { ...getLayoutOptions(layoutType.value), randomize: true, animate: false, fit: false }
+    const options = {
+      ...getLayoutOptions(layoutType.value, cyRef.value.nodes().length),
+      randomize: true,
+      animate: false,
+      fit: false,
+    }
     try {
       cyRef.value.layout(options).run()
     } catch {
@@ -268,6 +279,8 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       el.data.pending = overlay.pending[el.data.originalId] || ''
     })
     const { addedIds, isChanged } = updateElements(elems)
+    const renderer = cyRef.value.renderer()
+    renderer.hideEdgesOnViewport = renderer.textureOnViewport = cyRef.value.nodes().length > LARGE_GRAPH_NODES
     applyFilter()
     hasElements.value = cyRef.value.elements().length > 0
     if (layout && isChanged) Promise.resolve().then(() => runLayout(layout, { before: positions, addedIds }))
@@ -303,25 +316,27 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
 
   const initCytoscape = (handlers) => {
     if (!cyContainer.value) return
+    wheelHandler = (e) => {
+      if (!cyRef.value || !(e.ctrlKey || e.altKey)) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      const sign = Math.sign(e.deltaY)
+      const isNotch = Math.abs(e.deltaY) >= WHEEL_NOTCH_MIN
+      const isStreak = isNotch && sign === wheelStreak.sign && e.timeStamp - wheelStreak.at < WHEEL_ACCEL_MS
+      const boost = isStreak ? Math.min(wheelStreak.boost + WHEEL_ACCEL_STEP, WHEEL_ACCEL_MAX) : 1
+      wheelStreak = { at: e.timeStamp, sign, boost }
+      cyRef.value.zoom({
+        level: cyRef.value.zoom() * 10 ** (-e.deltaY * WHEEL_ZOOM_PER_PIXEL * boost),
+        renderedPosition: { x: e.offsetX, y: e.offsetY },
+      })
+    }
+    cyContainer.value.addEventListener('wheel', wheelHandler, { passive: false, capture: true })
     cyRef.value = cytoscape({
       container: cyContainer.value,
       style: getCytoscapeStyle(isDark.value, layoutType.value),
       minZoom: MIN_ZOOM,
       maxZoom: MAX_ZOOM,
     })
-
-    wheelHandler = (e) => {
-      if (!cyRef.value || !(e.ctrlKey || e.altKey)) return
-      e.preventDefault()
-      e.stopPropagation()
-      const zoomFactor = 0.3
-      const direction = e.deltaY > 0 ? 1 / (1 + zoomFactor) : 1 + zoomFactor
-      cyRef.value.zoom({
-        level: cyRef.value.zoom() * direction,
-        renderedPosition: { x: e.offsetX, y: e.offsetY },
-      })
-    }
-    cyContainer.value.addEventListener('wheel', wheelHandler, { passive: false })
     cyRef.value.on('tap', (evt) => evt.target === cyRef.value && clearPath())
     bindGraphEvents(cyRef.value, cyContainer, handlers)
   }
@@ -447,7 +462,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     hideContextMenu()
     stopLayout()
     if (cyContainer.value && wheelHandler) {
-      cyContainer.value.removeEventListener('wheel', wheelHandler)
+      cyContainer.value.removeEventListener('wheel', wheelHandler, { capture: true })
       wheelHandler = null
     }
     cyRef.value?.destroy()

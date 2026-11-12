@@ -10,6 +10,8 @@ export const objectIdPattern = /^(\d+\.\d+\.\d+\.\d+|[0-9a-f]{32})$/i
 const plainIdPattern = /^\d+\.\d+\.\d+\.\d+$/
 const DETAIL_CACHE_SIZE = 300
 const ADD_LIMIT = 50
+const LINK_WHERE_MAX_IDS = 300
+const LARGE_GRAPH_NODES = 2000
 const diffKinds = [
   { key: 'added', label: '추가' },
   { key: 'removed', label: '삭제' },
@@ -123,6 +125,20 @@ export function useGraphExplorer() {
     post({ type: 'notify', text: '그래프에 따로 그려지지 않은 항목입니다.' })
   }
 
+  let isLargeWarned = false
+
+  const warnLargeGraph = () => {
+    const isLarge = Object.keys(rawNodes).length > LARGE_GRAPH_NODES
+    if (isLarge && !isLargeWarned) {
+      post({
+        type: 'notify',
+        warning: true,
+        text: `그래프의 객체가 ${LARGE_GRAPH_NODES}개를 넘었습니다. 느려지면 그래프를 비우고 필요한 객체만 ID로 열어 보세요.`,
+      })
+    }
+    isLargeWarned = isLarge
+  }
+
   const doSyncGraph = (layout = {}) => {
     clearNotice()
     const isChanged = syncGraph(rawNodes, rawEdges, rootId.value, layout, basket.overlay.value)
@@ -130,6 +146,7 @@ export function useGraphExplorer() {
     refreshRelations()
     onSelectionChange()
     persist()
+    warnLargeGraph()
     return isChanged
   }
 
@@ -153,12 +170,21 @@ export function useGraphExplorer() {
     expand: {
       fetch: ({ id, direction, options }) => request('expand', { ...options, id, direction }),
       apply: ({ id, direction, options }, result, target) => {
-        if (target.nodes[id]) mergeExpansion(id, direction, result, !options, target)
+        if (!target.nodes[id]) return result
+        mergeExpansion(id, direction, result, !options, target)
+        if (result.truncated) target.nodes[id] = { ...target.nodes[id], isTruncated: true }
+        return result
       },
     },
     link: {
       fetch: async ({ ids }) => {
-        const results = await Promise.allSettled(ids.map((id) => request('expand', { id, direction: 'both' })))
+        const graphIds = Object.keys(rawNodes)
+        const busWhere = graphIds.length <= LINK_WHERE_MAX_IDS ? `id matchlist '${graphIds.join(',')}' ','` : ''
+        const results = await Promise.allSettled(
+          ids.map((id) =>
+            request('expand', { id, direction: 'both', busWhere }).catch(() => request('expand', { id, direction: 'both' })),
+          ),
+        )
         const [found, failed] = partition(results, { status: 'fulfilled' })
         if (!found.length) throw failed[0].reason
         return found.map((result) => result.value)
@@ -174,7 +200,7 @@ export function useGraphExplorer() {
       },
     },
     connect: {
-      fetch: ({ from, relType }) => request('expand', { id: from, direction: 'from', relType }),
+      fetch: ({ from, to, relType }) => request('expand', { id: from, direction: 'from', relType, busWhere: `id==${to}` }),
       apply: ({ to, relType }, result, target) => {
         result.edges
           .filter((e) => e.to === to && e.label === relType && target.nodes[e.from] && target.nodes[to])
@@ -238,10 +264,11 @@ export function useGraphExplorer() {
     isLoading.value = true
     errorMsg.value = ''
     try {
-      await explore({ kind: 'expand', id, direction, options })
+      const result = await explore({ kind: 'expand', id, direction, options })
       lastExpansionMode.value = direction === 'to' ? 'backward' : 'forward'
       lastExpandedNodeId.value = id
       if (!doSyncGraph({ anchorId: id })) post({ type: 'notify', text: '새로 표시할 연결이 없습니다.' })
+      showTruncated(id, result)
     } catch (e) {
       errorMsg.value = e.message
       cyRef.value?.nodes().data('isExploring', false)
@@ -256,6 +283,16 @@ export function useGraphExplorer() {
     const id = expandDialogId.value
     expandDialogId.value = ''
     expand(id, options.direction, options)
+  }
+
+  const showTruncated = (id, { truncated, limit }) => {
+    if (!truncated) return
+    notice.value = {
+      title: `연결이 많아 방향별 ${limit}건까지만 표시했습니다. 나머지는 ID로 검색해 여세요.`,
+      chips: [],
+      items: [],
+      action: { label: '조건 좁혀 펼치기', run: () => (expandDialogId.value = id) },
+    }
   }
 
   const linkExisting = async (ids) => {
@@ -326,12 +363,14 @@ export function useGraphExplorer() {
       clearGraph()
       rootId.value = summary.id
       rawNodes[summary.id] = toNode(summary)
-      mergeExpansion(summary.id, 'both', expansion)
-      explorations = [{ kind: 'expand', id: summary.id, direction: 'both', options: null }]
+      const entry = { kind: 'expand', id: summary.id, direction: 'both', options: null }
+      explorers.expand.apply(entry, expansion, rawGraph())
+      explorations = [entry]
       markLoaded()
       lastExpansionMode.value = 'forward'
       if (record) recordHistory(summary)
       doSyncGraph({ fit: true })
+      showTruncated(summary.id, expansion)
       return true
     } catch (e) {
       errorMsg.value = e.message
@@ -456,6 +495,7 @@ export function useGraphExplorer() {
   const searchForm = reactive({ type: '', name: '', revision: '', where: '' })
   const searchResults = ref([])
   const searchLimit = ref(0)
+  const searchWhere = ref('')
   const isSearching = ref(false)
   const isSearchPanelOpen = ref(false)
 
@@ -475,6 +515,7 @@ export function useGraphExplorer() {
       const { results, limit } = await request('search', { ...searchForm })
       searchResults.value = results
       searchLimit.value = limit
+      searchWhere.value = searchForm.where.trim()
       isSearchPanelOpen.value = true
       persist()
       if (results.length === 1) loadRoot(results[0].id)
@@ -773,9 +814,9 @@ export function useGraphExplorer() {
       post({ type: 'notify', text: '이 객체의 삭제 문장이 이미 바구니에 있습니다.' })
       return
     }
-    const [{ summary, basics, attributes }, { edges }] = await Promise.all([
+    const [{ summary, basics, attributes }, connections] = await Promise.all([
       request('object', { id }),
-      request('expand', { id, direction: 'both' }),
+      request('connectionCount', { id }),
     ])
     const valueOf = (key) => basics.find((field) => field.key === key)?.value ?? ''
     const object = {
@@ -785,7 +826,7 @@ export function useGraphExplorer() {
       fields: basics.filter((field) => restoreFields.includes(field.key)),
       attributes: await restorableAttributes(attributes),
     }
-    await stageChange({ kind: 'delete', id, object, connections: uniq(edges.map((edge) => edge.id)).length })
+    await stageChange({ kind: 'delete', id, object, connections })
   })
 
   const refreshSelectedCluster = () => {
@@ -891,6 +932,7 @@ export function useGraphExplorer() {
       searchForm: { ...searchForm },
       searchResults: searchResults.value,
       searchLimit: searchLimit.value,
+      searchWhere: searchWhere.value,
       isSearchPanelOpen: isSearchPanelOpen.value,
       hiddenRelations: hiddenRelations.value,
       relationFilter: relationFilter.value,
@@ -941,6 +983,7 @@ export function useGraphExplorer() {
     Object.assign(searchForm, saved.searchForm)
     searchResults.value = saved.searchResults
     searchLimit.value = saved.searchLimit
+    searchWhere.value = saved.searchWhere ?? ''
     isSearchPanelOpen.value = saved.isSearchPanelOpen
     hiddenRelations.value = saved.hiddenRelations ?? []
     relationFilter.value = saved.relationFilter ?? ''
@@ -983,6 +1026,7 @@ export function useGraphExplorer() {
     searchForm,
     searchResults,
     searchLimit,
+    searchWhere,
     isSearching,
     isSearchPanelOpen,
     onSearch,

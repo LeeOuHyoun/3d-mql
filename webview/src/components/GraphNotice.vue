@@ -4,7 +4,7 @@ import { X, ChevronRight } from '@lucide/vue'
 const props = defineProps({
   notice: { type: Object, required: true },
 })
-const emit = defineEmits(['focus', 'close'])
+const emit = defineEmits(['focus', 'action', 'close'])
 
 const isListOpen = ref(false)
 const kindClass = {
@@ -39,6 +39,13 @@ const iconBtnClass =
       <span v-for="chip in props.notice.chips" :key="chip.key" :class="[chipClass, kindClass[chip.key]]">
         {{ chip.label }} {{ chip.count }}
       </span>
+      <button
+        v-if="props.notice.action"
+        class="shrink-0 h-5 px-1.5 rounded border border-[#61afef] bg-transparent text-[#4b8bca] dark:text-[#61afef] font-semibold cursor-pointer hover:bg-[#61afef]/15"
+        @click="emit('action')"
+      >
+        {{ props.notice.action.label }}
+      </button>
       <button :class="iconBtnClass" title="표시 지우기" @click="emit('close')">
         <X :size="14" />
       </button>

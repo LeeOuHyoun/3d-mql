@@ -29,6 +29,9 @@ const rows = computed(() => {
         <span class="shrink-0 w-9 text-gray-400 dark:text-[#5c6370]">{{ key }}</span>
         <span class="break-all" :class="key === 'ID' && 'font-mono'">{{ value }}</span>
       </div>
+      <div v-if="props.tooltip.data.isTruncated" class="mt-2 text-amber-600 dark:text-amber-400">
+        연결이 많아 일부만 표시됨
+      </div>
       <div v-if="props.tooltip.data.isRoot" class="mt-2 text-[#e06c75] font-semibold">★ Root Node</div>
     </template>
   </div>
