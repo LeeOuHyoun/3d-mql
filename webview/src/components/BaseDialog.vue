@@ -23,10 +23,25 @@ const handleEscape = (e) => {
 }
 
 useEventListener(window, 'keydown', handleEscape, { capture: true })
+
+let isBackdropPress = false
+
+const handleBackdropDown = (e) => {
+  isBackdropPress = e.target === e.currentTarget
+}
+
+const handleBackdropClick = (e) => {
+  if (isBackdropPress && e.target === e.currentTarget) emit('close')
+  isBackdropPress = false
+}
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" @click.self="emit('close')">
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+    @pointerdown="handleBackdropDown"
+    @click="handleBackdropClick"
+  >
     <div
       class="max-w-full max-h-[85vh] flex flex-col rounded-xl border shadow-2xl text-xs bg-white dark:bg-[#282c34] border-gray-200 dark:border-[#3e4451] text-gray-800 dark:text-[#abb2bf]"
       :class="props.widthClass"

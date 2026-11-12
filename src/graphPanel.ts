@@ -9,6 +9,7 @@ import {
   expandObject,
   forgetSymbolics,
   hasDelete,
+  hasUnbalancedQuote,
   isDestructive,
   listNames,
   lookupSymbolics,
@@ -59,6 +60,11 @@ const objectIdPattern = /^(?:\d+\.\d+\.\d+\.\d+|[0-9a-f]{32})$/i;
 
 const searchKeys = ['type', 'name', 'revision'];
 
+const countSetting = (key: string, fallback: number) => {
+  const value = Math.floor(Number(vscode.workspace.getConfiguration('3d-mql').get(key, fallback)));
+  return value >= 1 ? value : fallback;
+};
+
 export class GraphPanel {
   private static readonly panels = new Map<number, GraphPanel>();
   private static lastActive: GraphPanel | undefined;
@@ -70,6 +76,7 @@ export class GraphPanel {
   private pendingMessage: Record<string, unknown> | undefined;
   private txActive = false;
   private consoleFocused = false;
+  private disposed = false;
 
   private static syncConsoleFocus() {
     const focused = [...GraphPanel.panels.values()].some((item) => item.panel.active && item.consoleFocused);
@@ -181,11 +188,11 @@ export class GraphPanel {
   private async handle(method: string, params: Record<string, unknown>, requestId: number) {
     const id = String(params.id ?? '');
     if (method === 'search') {
-      const limit = vscode.workspace.getConfiguration('3d-mql').get<number>('searchLimit', 200);
+      const limit = countSetting('searchLimit', 200);
       return searchObjects(this.client, params as SearchParams, limit).then((results) => ({ results, limit }));
     }
     if (method === 'expand') {
-      const limit = vscode.workspace.getConfiguration('3d-mql').get<number>('expandLimit', 500);
+      const limit = countSetting('expandLimit', 500);
       return expandObject(this.client, id, params.direction as Direction, params as ExpandOptions, limit);
     }
     if (method === 'connectionCount') return countConnections(this.client, id);
@@ -217,6 +224,9 @@ export class GraphPanel {
   }
 
   private async run(command: string, requestId: number) {
+    if (hasUnbalancedQuote(command)) {
+      return { output: '', error: '따옴표 짝이 맞지 않아 실행하지 않았습니다. 짝이 맞지 않은 따옴표는 뒤따르는 명령까지 문자열로 묶어 세션을 멈추게 합니다.' };
+    }
     if (/\bproperty\b/i.test(command)) forgetSymbolics(this.client);
     try {
       const output = await this.client.run(command, (text) => this.post({ type: 'chunk', id: requestId, text }));
@@ -224,6 +234,7 @@ export class GraphPanel {
       return { output, error: '' };
     } catch (error) {
       if (!(error instanceof MqlError)) throw error;
+      if (transactionAfter(command, this.txActive) !== this.txActive) this.txActive = false;
       return { output: error.output, error: error.message };
     }
   }
@@ -304,6 +315,7 @@ export class GraphPanel {
   }
 
   private post(message: Record<string, unknown>) {
+    if (this.disposed) return;
     void this.panel.webview.postMessage(message);
   }
 
@@ -335,6 +347,7 @@ export class GraphPanel {
   }
 
   private dispose() {
+    this.disposed = true;
     GraphPanel.panels.delete(this.slot);
     if (GraphPanel.lastActive === this) GraphPanel.lastActive = [...GraphPanel.panels.values()].at(-1);
     GraphPanel.syncConsoleFocus();

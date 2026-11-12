@@ -23,7 +23,7 @@ const selectNames = (command) => {
 
 const dumpGrid = (command, lines, separator) => {
   const rows = lines.map((line) => line.split(separator))
-  const width = Math.max(...rows.map((row) => row.length))
+  const width = rows.reduce((max, row) => Math.max(max, row.length), 0)
   if (width < 2) return null
   const names = selectNames(command)
   const lead = width - names.length

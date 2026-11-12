@@ -84,6 +84,7 @@ const handleKeydown = (e) => {
     e.preventDefault()
     select(visibleOptions.value[activeIndex.value])
   } else if (e.key === 'Escape' || e.key === 'Tab') {
+    if (e.key === 'Escape' && isShown.value) e.stopPropagation()
     close()
   }
 }

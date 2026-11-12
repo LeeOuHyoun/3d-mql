@@ -3,14 +3,13 @@ import { cachedRequest, clearRequestCache, getState, onMessage, post, request, s
 import { useTheme } from './useTheme.js'
 import { useGraphCytoscape } from './useGraphCytoscape.js'
 import { useRelationFilter } from './useRelationFilter.js'
-import { hasWriteStatement, useMqlConsole } from './useMqlConsole.js'
+import { useMqlConsole } from './useMqlConsole.js'
 import { isPending, pendingId, pendingKey, useChangeBasket } from './useChangeBasket.js'
 
 export const objectIdPattern = /^(\d+\.\d+\.\d+\.\d+|[0-9a-f]{32})$/i
 const plainIdPattern = /^\d+\.\d+\.\d+\.\d+$/
 const DETAIL_CACHE_SIZE = 300
 const ADD_LIMIT = 50
-const LINK_WHERE_MAX_IDS = 300
 const LARGE_GRAPH_NODES = 2000
 const diffKinds = [
   { key: 'added', label: '추가' },
@@ -43,6 +42,7 @@ export function useGraphExplorer() {
     resetView,
     fitView,
     focusElement,
+    revealElement,
     findPath,
     pathExpression,
     highlightIds,
@@ -178,13 +178,7 @@ export function useGraphExplorer() {
     },
     link: {
       fetch: async ({ ids }) => {
-        const graphIds = Object.keys(rawNodes)
-        const busWhere = graphIds.length <= LINK_WHERE_MAX_IDS ? `id matchlist '${graphIds.join(',')}' ','` : ''
-        const results = await Promise.allSettled(
-          ids.map((id) =>
-            request('expand', { id, direction: 'both', busWhere }).catch(() => request('expand', { id, direction: 'both' })),
-          ),
-        )
+        const results = await Promise.allSettled(ids.map((id) => request('expand', { id, direction: 'both' })))
         const [found, failed] = partition(results, { status: 'fulfilled' })
         if (!found.length) throw failed[0].reason
         return found.map((result) => result.value)
@@ -196,11 +190,11 @@ export function useGraphExplorer() {
           .forEach((e) => {
             if (target.nodes[e.from] && target.nodes[e.to]) target.edges[e.id] ??= toEdge(e)
           })
-        return Object.keys(target.edges).length - before
+        return { added: Object.keys(target.edges).length - before, isPartial: results.some((result) => result.truncated) }
       },
     },
     connect: {
-      fetch: ({ from, to, relType }) => request('expand', { id: from, direction: 'from', relType, busWhere: `id==${to}` }),
+      fetch: ({ from, relType }) => request('expand', { id: from, direction: 'from', relType }),
       apply: ({ to, relType }, result, target) => {
         result.edges
           .filter((e) => e.to === to && e.label === relType && target.nodes[e.from] && target.nodes[to])
@@ -295,12 +289,15 @@ export function useGraphExplorer() {
     }
   }
 
+  const partialNote = (isPartial) => (isPartial ? ' 연결이 많은 객체는 일부 관계만 확인했습니다.' : '')
+
   const linkExisting = async (ids) => {
     isLoading.value = true
     errorMsg.value = ''
     try {
-      const added = await explore({ kind: 'link', ids })
-      post({ type: 'notify', text: added ? `기존 노드 사이의 관계 ${added}건을 연결했습니다.` : '새로 연결할 관계가 없습니다.' })
+      const { added, isPartial } = await explore({ kind: 'link', ids })
+      const text = added ? `기존 노드 사이의 관계 ${added}건을 연결했습니다.` : '새로 연결할 관계가 없습니다.'
+      post({ type: 'notify', text: `${text}${partialNote(isPartial)}` })
       if (added) doSyncGraph()
     } catch (e) {
       errorMsg.value = e.message
@@ -309,7 +306,9 @@ export function useGraphExplorer() {
     }
   }
 
-  const clearGraph = () => {
+  let graphEpoch = 0
+
+  const resetGraph = () => {
     rawNodes = {}
     rawEdges = {}
     explorations = []
@@ -320,6 +319,12 @@ export function useGraphExplorer() {
     resetRelations()
     clearDetail()
     doSyncGraph(null)
+  }
+
+  const clearGraph = () => {
+    graphEpoch += 1
+    isLoading.value = false
+    resetGraph()
   }
 
   const rootHistory = ref([])
@@ -352,6 +357,7 @@ export function useGraphExplorer() {
   }
 
   const loadRoot = async (id, record = true) => {
+    const epoch = ++graphEpoch
     isLoading.value = true
     errorMsg.value = ''
     try {
@@ -360,7 +366,8 @@ export function useGraphExplorer() {
         plainIdPattern.test(id) ? request('expand', { id, direction: 'both' }) : null,
       ])
       const expansion = early ?? (await request('expand', { id: summary.id, direction: 'both' }))
-      clearGraph()
+      if (epoch !== graphEpoch) return false
+      resetGraph()
       rootId.value = summary.id
       rawNodes[summary.id] = toNode(summary)
       const entry = { kind: 'expand', id: summary.id, direction: 'both', options: null }
@@ -373,10 +380,10 @@ export function useGraphExplorer() {
       showTruncated(summary.id, expansion)
       return true
     } catch (e) {
-      errorMsg.value = e.message
+      if (epoch === graphEpoch) errorMsg.value = e.message
       return false
     } finally {
-      isLoading.value = false
+      if (epoch === graphEpoch) isLoading.value = false
     }
   }
 
@@ -408,6 +415,8 @@ export function useGraphExplorer() {
 
   const refresh = async () => {
     if (!rootId.value || isLoading.value) return
+    const epoch = graphEpoch
+    const snapshot = explorations
     isLoading.value = true
     errorMsg.value = ''
     try {
@@ -415,11 +424,12 @@ export function useGraphExplorer() {
       clearRequestCache()
       const [{ summary }, results] = await Promise.all([
         requestDetail('object', rootId.value),
-        Promise.all(explorations.map((entry) => explorers[entry.kind].fetch(entry).catch(() => null))),
+        Promise.all(snapshot.map((entry) => explorers[entry.kind].fetch(entry).catch(() => null))),
       ])
+      if (epoch !== graphEpoch) return
       const before = rawGraph()
       const after = { nodes: { [summary.id]: toNode(summary) }, edges: {} }
-      const pending = explorations
+      const pending = snapshot
         .map((entry, index) => ({ entry, result: results[index] }))
         .filter((item) => item.result)
       const isExpandable = ({ entry }) => entry.kind === 'expand' && !!after.nodes[entry.id]
@@ -442,9 +452,9 @@ export function useGraphExplorer() {
       markDiff({ added: idsOf('added'), changed: idsOf('changed') }, ghosts)
       notice.value = { title: '새로고침 결과', chips: chipsOf(diffKinds, items.map((item) => item.kind)), items }
     } catch (e) {
-      errorMsg.value = e.message
+      if (epoch === graphEpoch) errorMsg.value = e.message
     } finally {
-      isLoading.value = false
+      if (epoch === graphEpoch) isLoading.value = false
     }
   }
 
@@ -465,9 +475,9 @@ export function useGraphExplorer() {
     isLoading.value = true
     try {
       const added = await explore({ kind: 'add', ids: targets })
-      if (added.length) await explore({ kind: 'link', ids: added })
+      const linked = added.length ? await explore({ kind: 'link', ids: added }) : null
       const capped = fresh.length > ADD_LIMIT ? ` (한 번에 최대 ${ADD_LIMIT}개)` : ''
-      post({ type: 'notify', text: `그래프에 객체 ${added.length}개를 추가했습니다.${capped}` })
+      post({ type: 'notify', text: `그래프에 객체 ${added.length}개를 추가했습니다.${capped}${partialNote(linked?.isPartial)}` })
       if (added.length) doSyncGraph({})
     } finally {
       isLoading.value = false
@@ -616,22 +626,27 @@ export function useGraphExplorer() {
     tappedElement = null
     selectionCount.value = selected.length
     const target = selected.length === 1 ? selected[0] : tapped?.inside() && tapped.selected() ? tapped : null
+    if (target && tapped && target.same(tapped)) isDetailPanelOpen.value = true
     if (target) showDetail(target)
     else if (selectedItem.value && !cy.getElementById(selectedItem.value.id).length) clearDetail()
-  }, 50)
+  }, 16)
 
   const locateSelected = () => {
     if (focusElement(selectedItem.value?.id)) return
     post({ type: 'notify', text: '관계 필터로 숨겨져 있어 그래프에서 찾을 수 없습니다.' })
   }
 
-  const { run: runInConsole, runCount, entries } = useMqlConsole()
+  const revealSelected = () => {
+    if (selectedItem.value) revealElement(selectedItem.value.id)
+  }
+
+  const { run: runInConsole, runCount, writeCount } = useMqlConsole()
 
   watch(runCount, () => {
     detailCache.clear()
     clearRequestCache()
-    if (hasWriteStatement(entries.value.at(-1)?.command ?? '')) isStale.value = true
   })
+  watch(writeCount, () => (isStale.value = true))
 
   const onApplied = async (createdIds = [], connected = []) => {
     const fresh = createdIds.filter((id) => !rawNodes[id])
@@ -920,8 +935,12 @@ export function useGraphExplorer() {
     else if (action === 'removePending') removePending(id)
   }
 
-  const persist = debounce(() => {
+  let isStateDirty = false
+  let idleWrite = 0
+
+  const writeState = () => {
     const cy = cyRef.value
+    isStateDirty = false
     setState({
       rawNodes,
       rawEdges,
@@ -945,9 +964,23 @@ export function useGraphExplorer() {
       positions: cy ? Object.fromEntries(cy.nodes().map((n) => [n.id(), n.position()])) : null,
       viewport: cy ? { zoom: cy.zoom(), pan: cy.pan() } : null,
     })
+  }
+
+  const writeWhenIdle = debounce(() => {
+    cancelIdleCallback(idleWrite)
+    idleWrite = requestIdleCallback(writeState, { timeout: 1000 })
   }, 300)
 
-  useEventListener(window, 'pagehide', () => persist.flush())
+  const persist = () => {
+    isStateDirty = true
+    writeWhenIdle()
+  }
+
+  const flushState = () => {
+    if (isStateDirty) writeState()
+  }
+
+  useEventListener(window, 'pagehide', flushState)
   watch([searchForm, isSearchPanelOpen, hiddenRelations, relationFilter, graphFilter, selectedItem], persist)
   watch(basket.changes, persist, { deep: true })
 
@@ -1049,6 +1082,7 @@ export function useGraphExplorer() {
     selectedItem,
     selectionCount,
     locateSelected,
+    revealSelected,
     detail,
     isDetailLoading,
     isDetailPanelOpen,

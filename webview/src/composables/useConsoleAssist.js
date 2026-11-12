@@ -9,7 +9,7 @@ import {
   schemaKindOf,
   statementPrefix,
 } from '@/console/mqlAssist.js'
-import { hasWriteStatement, useMqlConsole } from './useMqlConsole.js'
+import { useMqlConsole } from './useMqlConsole.js'
 
 const MIRROR_STYLES = [
   'fontFamily',
@@ -25,11 +25,9 @@ const MIRROR_STYLES = [
 ]
 
 const schemaNames = new Map()
-const { runCount, entries } = useMqlConsole()
+const { writeCount } = useMqlConsole()
 
-watch(runCount, () => {
-  if (hasWriteStatement(entries.value.at(-1)?.command ?? '')) schemaNames.clear()
-})
+watch(writeCount, () => schemaNames.clear())
 
 const namesOf = (kind) => {
   if (!schemaNames.has(kind)) {

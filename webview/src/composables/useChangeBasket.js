@@ -14,7 +14,7 @@ export const isPending = (item) => item.status !== 'done'
 
 export function useChangeBasket(connection, onApplied, scriptInfo) {
   const { run, openInEditor } = useMqlConsole()
-  const runChange = (command) => run(command, { confirm: false })
+  const runChange = (command) => run(command, { confirm: false, fill: false })
   const changes = ref([])
   const isBasketOpen = ref(false)
   const isApplying = ref(false)
@@ -38,12 +38,20 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
     return change.key
   }
 
+  const isLocked = () => {
+    const locked = isApplying.value || !!transaction.value
+    if (locked) post({ type: 'notify', warning: true, text: '바구니를 실행하는 동안에는 항목을 빼거나 고칠 수 없습니다.' })
+    return locked
+  }
+
   const updateChange = async (key, params, meta) => {
+    if (isLocked()) return
     const change = await buildChange(params, meta, key)
     changes.value = changes.value.map((item) => (item.key === key ? { ...change, status: '', error: '' } : item))
   }
 
   const removeChange = (key) => {
+    if (isLocked()) return
     const dependents = dependentsOf(key).map((item) => item.key)
     changes.value = changes.value.filter((item) => item.key !== key && !dependents.includes(item.key))
     if (dependents.length) post({ type: 'notify', text: `이 객체를 쓰는 연결 문장 ${dependents.length}건도 함께 뺐습니다.` })
@@ -129,8 +137,12 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
 
   const previewChanges = async () => {
     const keys = pendingChanges.value.map((item) => item.key)
+    isApplying.value = true
     const { error } = await runChange('start transaction;')
-    if (error) return
+    if (error) {
+      isApplying.value = false
+      return
+    }
     transaction.value = { remaining: TRANSACTION_SECONDS, keys }
     await runChanges(true)
   }

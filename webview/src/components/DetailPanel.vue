@@ -33,6 +33,7 @@ const props = defineProps({
 })
 const emit = defineEmits([
   'close',
+  'opened',
   'locate',
   'expand',
   'openRoot',
@@ -110,7 +111,7 @@ const loadExtra = async () => {
   } catch (e) {
     if (id === itemId.value) extra.value = { id, error: e.message, states: [], history: [] }
   } finally {
-    isExtraLoading.value = false
+    if (id === itemId.value) isExtraLoading.value = false
   }
 }
 
@@ -175,6 +176,8 @@ const menuColors = {
   violet: 'text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/40',
 }
 const valueMenu = shallowRef(null)
+
+watch(itemId, () => (valueMenu.value = null))
 
 const openValueMenu = (e, section, field) => {
   const key = symbolicKey(section, field)
@@ -241,7 +244,7 @@ const actionBtnClass =
 </script>
 
 <template>
-  <Transition name="dock-right">
+  <Transition name="dock-right" @after-enter="emit('opened')">
     <div
       v-if="props.open"
       class="relative h-full border-l border-gray-200 dark:border-[#3e4451] bg-gray-50 dark:bg-[#21252b] flex flex-col shrink-0 overflow-hidden"

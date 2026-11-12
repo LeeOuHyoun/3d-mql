@@ -114,6 +114,7 @@ const CLAUSE_HEADS = new Set([
 const SCHEMA_KINDS =
   'type|policy|attribute|relationship|person|program|vault|role|group|association|command|menu|form|table|channel|portal|page'
 const PLACEHOLDER = /(?<!\$)<[A-Za-z_][\w|,.]*>/g
+const TEMPLATE_HOLES = new Set([...DDL_TEMPLATES.values()].flatMap((text) => text.match(PLACEHOLDER)))
 const MATCH_LIMIT = 40
 const attributePattern = /^(.*?\battribute\[)([^\]]*)$/i
 const commandPattern = new RegExp(`^\\s*(print|mod|modify|del|delete|list)\\s+(${SCHEMA_KINDS})(?:\\s+([^\\s;]*))?$`, 'i')
@@ -205,7 +206,9 @@ export const matchPhrases = (raw, force, names = []) => {
 }
 
 export const placeholderSpans = (text) =>
-  [...text.matchAll(PLACEHOLDER)].map((match) => ({ start: match.index, end: match.index + match[0].length }))
+  [...text.matchAll(PLACEHOLDER)]
+    .filter((match) => TEMPLATE_HOLES.has(match[0]))
+    .map((match) => ({ start: match.index, end: match.index + match[0].length }))
 
 export const nextPlaceholder = (text, start, end, back) => {
   const spans = placeholderSpans(text)

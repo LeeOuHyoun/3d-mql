@@ -65,7 +65,7 @@ const runInput = () => {
 }
 
 watch(
-  () => entries.value.length,
+  () => entries.value.at(-1)?.id,
   () => nextTick(() => logRef.value && (logRef.value.scrollTop = logRef.value.scrollHeight)),
 )
 

@@ -119,6 +119,7 @@ const listKinds = [
 const ownershipSelects = 'organization project';
 const rangeOperatorPattern = /^(?:!=|<|>|~|!~|match|nmatch|smatch|nsmatch|program|between)/i;
 const quotedTextPattern = /'[^']*'|"[^"]*"/g;
+const commentLinePattern = /^\s*#.*$/gm;
 const deletePattern = /^\s*del(?:ete)?\s/i;
 const destructivePatterns = [
   deletePattern,
@@ -583,6 +584,9 @@ export const isDestructive = (command: string) =>
   statementsOf(command).some((statement) => destructivePatterns.some((pattern) => pattern.test(statement)));
 
 export const hasDelete = (command: string) => statementsOf(command).some((statement) => deletePattern.test(statement));
+
+export const hasUnbalancedQuote = (command: string) =>
+  /['"]/.test(command.replace(commentLinePattern, '').replace(quotedTextPattern, ''));
 
 export const maskSecret = (text: string) => text.replace(secretPattern, (match: string, head?: string) => (head ? `${head}****` : match));
 

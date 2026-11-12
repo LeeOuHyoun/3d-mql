@@ -1,7 +1,7 @@
 import cytoscape from 'cytoscape'
 import fcose from 'cytoscape-fcose'
 import dagre from 'cytoscape-dagre'
-import { debounce, isEqual, partition, uniqBy } from 'lodash-es'
+import { clamp, debounce, isEqual, partition, uniqBy } from 'lodash-es'
 import { getCytoscapeStyle } from '@/graph/graphStyles.js'
 import { getLayoutOptions, LARGE_GRAPH_NODES } from '@/graph/graphLayouts.js'
 import { placeAdded } from '@/graph/graphPlacement.js'
@@ -29,6 +29,12 @@ const WHEEL_NOTCH_MIN = 40
 const WHEEL_ACCEL_MS = 200
 const WHEEL_ACCEL_STEP = 0.5
 const WHEEL_ACCEL_MAX = 4
+const ZOOM_EASE = 0.3
+const ZOOM_SETTLE = 0.002
+
+const slideIntoView = (low, high, size) => Math.max(FIT_PADDING - low, 0) || Math.min(size - FIT_PADDING - high, 0)
+
+const isSamePoint = (a, b) => Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5
 
 export function useGraphCytoscape(isDark, lastExpansionMode) {
   const cyRef = shallowRef(null)
@@ -42,9 +48,46 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   let settling = null
   let wheelHandler = null
   let wheelStreak = { at: 0, sign: 0, boost: 1 }
+  let zoomGoal = null
+  let zoomFrame = 0
   const { tooltip, contextMenu, bindGraphEvents, hideTooltip, hideContextMenu } = useGraphEvents()
 
+  const cancelZoom = () => {
+    cancelAnimationFrame(zoomFrame)
+    zoomFrame = 0
+    zoomGoal = null
+  }
+
+  const stepZoom = () => {
+    zoomFrame = 0
+    const cy = cyRef.value
+    if (!cy || !zoomGoal) return
+    const { level, anchor } = zoomGoal
+    const current = cy.zoom()
+    const isSettled = Math.abs(Math.log(level / current)) < ZOOM_SETTLE
+    cy.zoom({ level: isSettled ? level : current * (level / current) ** ZOOM_EASE, renderedPosition: anchor })
+    if (isSettled || cy.zoom() === current) zoomGoal = null
+    else zoomFrame = requestAnimationFrame(stepZoom)
+  }
+
+  const zoomSmoothly = (factor, anchor) => {
+    const from = zoomGoal?.level ?? cyRef.value.zoom()
+    zoomGoal = { level: clamp(from * factor, MIN_ZOOM, MAX_ZOOM), anchor }
+    if (!zoomFrame) zoomFrame = requestAnimationFrame(stepZoom)
+  }
+
+  const moveNodes = (positions) => {
+    const cy = cyRef.value
+    cy.batch(() =>
+      cy.nodes().forEach((n) => {
+        const position = positions[n.id()]
+        if (position && !isSamePoint(n.position(), position)) n.position(position)
+      }),
+    )
+  }
+
   const stopLayout = () => {
+    cancelZoom()
     const cy = cyRef.value
     const pending = settling
     settling = null
@@ -53,7 +96,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     cy?.stop(true)
     cy?.nodes().stop(true)
     if (!cy || !pending) return
-    cy.batch(() => cy.nodes().forEach((n) => pending.target[n.id()] && n.position(pending.target[n.id()])))
+    moveNodes(pending.target)
     if (pending.viewport) cy.viewport(pending.viewport)
   }
 
@@ -152,12 +195,14 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     const pan = held
       ? { x: held.x - zoom * positions[anchorId].x, y: held.y - zoom * positions[anchorId].y }
       : cy.pan()
-    const slide = (low, high, size) => Math.max(FIT_PADDING - low, 0) || Math.min(size - FIT_PADDING - high, 0)
     const frame = (group) => {
       const next = toScreen(boxOf(group, positions), pan)
       return next.x2 - next.x1 > width - FIT_PADDING * 2 || next.y2 - next.y1 > height - FIT_PADDING * 2
         ? fitViewport(group, positions, zoom)
-        : { zoom, pan: { x: pan.x + slide(next.x1, next.x2, width), y: pan.y + slide(next.y1, next.y2, height) } }
+        : {
+            zoom,
+            pan: { x: pan.x + slideIntoView(next.x1, next.x2, width), y: pan.y + slideIntoView(next.y1, next.y2, height) },
+          }
     }
     const overview = isOverview && frame(visible)
     return overview && (zoom < READABLE_ZOOM || overview.zoom >= READABLE_ZOOM) ? overview : frame(focus)
@@ -191,15 +236,14 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       const neighbor = n.neighborhood('node').filter((other) => !isAdded(other))
       return origin ?? current[neighbor.id()] ?? target[n.id()]
     }
-    const start = Object.fromEntries(nodes.map((n) => [n.id(), startOf(n)]))
-    cy.batch(() => nodes.forEach((n) => n.position(start[n.id()])))
+    moveNodes(Object.fromEntries(nodes.map((n) => [n.id(), startOf(n)])))
     const viewport = isFull
       ? fitViewport(cy.nodes(':visible'), target)
       : reveal
         ? revealViewport(anchorId, added, target)
         : null
     if (!animate || nodes.length > ANIMATE_MAX_NODES) {
-      cy.batch(() => nodes.forEach((n) => n.position(target[n.id()])))
+      moveNodes(target)
       if (viewport) cy.viewport(viewport)
       return
     }
@@ -210,6 +254,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       name: 'preset',
       positions: (n) => target[n.id()],
       animate: true,
+      animateFilter: (n) => !isSamePoint(n.position(), target[n.id()]),
       animationDuration: ANIMATION_MS,
       animationEasing: ANIMATION_EASING,
       fit: false,
@@ -325,10 +370,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
       const isStreak = isNotch && sign === wheelStreak.sign && e.timeStamp - wheelStreak.at < WHEEL_ACCEL_MS
       const boost = isStreak ? Math.min(wheelStreak.boost + WHEEL_ACCEL_STEP, WHEEL_ACCEL_MAX) : 1
       wheelStreak = { at: e.timeStamp, sign, boost }
-      cyRef.value.zoom({
-        level: cyRef.value.zoom() * 10 ** (-e.deltaY * WHEEL_ZOOM_PER_PIXEL * boost),
-        renderedPosition: { x: e.offsetX, y: e.offsetY },
-      })
+      zoomSmoothly(10 ** (-e.deltaY * WHEEL_ZOOM_PER_PIXEL * boost), { x: e.offsetX, y: e.offsetY })
     }
     cyContainer.value.addEventListener('wheel', wheelHandler, { passive: false, capture: true })
     cyRef.value = cytoscape({
@@ -346,7 +388,9 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
   watch(layoutType, resetView)
 
   const animateViewport = (viewport) => {
-    if (viewport) cyRef.value.animate({ ...viewport, duration: 300, easing: ANIMATION_EASING })
+    if (!viewport) return
+    cancelZoom()
+    cyRef.value.animate({ ...viewport, duration: 300, easing: ANIMATION_EASING })
   }
 
   const fitView = () => {
@@ -362,6 +406,17 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     const nodes = el.isNode() ? el : el.connectedNodes()
     animateViewport(fitViewport(nodes, getPositions(), Math.max(cy.zoom(), FIT_MAX_ZOOM)))
     return true
+  }
+
+  const revealElement = (id) => {
+    const cy = cyRef.value
+    const el = cy?.getElementById(id)
+    if (!el?.length || !el.visible()) return
+    cy.resize()
+    const box = el.renderedBoundingBox({ includeLabels: false })
+    const dx = slideIntoView(box.x1, box.x2, cy.width())
+    const dy = slideIntoView(box.y1, box.y2, cy.height())
+    if (dx || dy) animateViewport({ pan: { x: cy.pan().x + dx, y: cy.pan().y + dy } })
   }
 
   const clearPath = () =>
@@ -523,6 +578,7 @@ export function useGraphCytoscape(isDark, lastExpansionMode) {
     resetView,
     fitView,
     focusElement,
+    revealElement,
     findPath,
     pathExpression,
     highlightIds,

@@ -87,6 +87,7 @@ const {
   selectedItem,
   selectionCount,
   locateSelected,
+  revealSelected,
   detail,
   isDetailLoading,
   isDetailPanelOpen,
@@ -186,8 +187,12 @@ whenever(
 
 const isShortcutGuideOpen = ref(false)
 
+const clearUnlessTyping = () => {
+  if (!['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) clearGraph()
+}
+
 const shortcuts = {
-  clear: clearGraph,
+  clear: clearUnlessTyping,
   fit: fitView,
   relationPanel: useToggle(isRelationPanelOpen),
   detailPanel: useToggle(isDetailPanelOpen),
@@ -444,6 +449,7 @@ const contextMenuItems = computed(() => {
         :detail="detail"
         :isLoading="isDetailLoading"
         @close="isDetailPanelOpen = false"
+        @opened="revealSelected"
         @locate="locateSelected"
         @expand="expand"
         @openRoot="loadRoot"

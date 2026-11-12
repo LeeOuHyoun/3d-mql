@@ -119,7 +119,15 @@ function errorLines(text: string) {
   return [...lines.filter((line) => errorLinePattern.test(line)), ...prompt].map((line) => line.trim());
 }
 
-const lastSetContext = (command: string) => [...command.matchAll(setContextPattern)].at(-1)?.[1];
+const blankQuoted = (command: string) =>
+  command.replace(quotedPattern, (text) => `${text[0]}${' '.repeat(text.length - 2)}${text[0]}`);
+
+const lastSetContext = (command: string) => {
+  const match = [...blankQuoted(command).matchAll(setContextPattern)].at(-1);
+  if (!match || match.index === undefined) return undefined;
+  const start = match.index + match[0].length - match[1].length;
+  return command.slice(start, start + match[1].length);
+};
 
 export class MqlError extends Error {
   constructor(
@@ -144,6 +152,8 @@ export class MqlClient {
   private gate: Promise<unknown> = Promise.resolve();
   private marker: string[] | undefined;
   private lastContext = '';
+  private disposed = false;
+  private bootFailure: Error | undefined;
 
   constructor(
     private readonly contextCommand: () => string,
@@ -161,11 +171,14 @@ export class MqlClient {
   }
 
   start(): Promise<void> {
+    if (this.disposed) return Promise.reject(new Error('MQL 세션이 종료되었습니다.'));
+    if (this.bootFailure) return Promise.reject(this.bootFailure);
     if (!this.starting) {
       const booting: Promise<void> = this.boot().catch((error: Error) => {
         if (!this.starting || this.starting === booting) {
           this.starting = undefined;
           this.session.stop();
+          if (error instanceof MqlError) this.bootFailure = error;
           this.onStatus('failed', error.message);
         }
         throw error;
@@ -176,6 +189,7 @@ export class MqlClient {
   }
 
   restart(): Promise<void> {
+    this.bootFailure = undefined;
     this.session.stop();
     this.rejectAll(new Error('MQL 세션을 다시 시작합니다.'));
     this.starting = undefined;
@@ -200,6 +214,7 @@ export class MqlClient {
   }
 
   dispose() {
+    this.disposed = true;
     this.session.stop();
     this.rejectAll(new Error('MQL 세션이 종료되었습니다.'));
     this.starting = undefined;
@@ -269,12 +284,19 @@ export class MqlClient {
     });
   }
 
+  private learnTimeout() {
+    return setTimeout(() => this.expireLearning(), learnTimeoutMs);
+  }
+
+  private expireLearning() {
+    const isBooted = !!this.marker;
+    this.finishLearning(new Error('MQL 응답 확인 시간이 초과되었습니다.'));
+    if (isBooted) void this.restart().catch(() => undefined);
+  }
+
   private learn(command: string) {
     return new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(
-        () => this.finishLearning(new Error('MQL 응답 확인 시간이 초과되었습니다.')),
-        learnTimeoutMs,
-      );
+      const timer = this.learnTimeout();
       this.learning = { command: command || markerCommand, at: Date.now(), lines: [], sent: 2, verifyFrom: 0, timer, resolve, reject };
       const commands = [command, markerCommand, markerCommand].filter(Boolean).join('\n');
       if (!this.session.send(commands)) this.finishLearning(new Error('MQL 명령 전송에 실패했습니다.'));
@@ -312,6 +334,8 @@ export class MqlClient {
     if (cleanLine(text).trim()) this.watch();
     this.stream();
     if (this.learning) {
+      clearTimeout(this.learning.timer);
+      this.learning.timer = this.learnTimeout();
       clearTimeout(this.learnTimer);
       this.learnTimer = setTimeout(() => this.checkLearning(), learnQuietMs);
     } else this.scheduleFlush(pipe);

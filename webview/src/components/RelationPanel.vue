@@ -23,6 +23,8 @@ const {
 
 const { width, onResizeStart } = usePanelResize('relation', 260, 'right')
 
+onBeforeUnmount(clearHighlight)
+
 const handleLabelClick = (e, item) => {
   if (e.ctrlKey || e.altKey) showOnlyRelation(item.key)
   else toggleRelation(item.key)

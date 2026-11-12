@@ -1,5 +1,5 @@
 <script setup>
-import { debounce } from 'lodash-es'
+import { throttle } from 'lodash-es'
 
 const props = defineProps({
   cy: { type: Object, default: null },
@@ -9,13 +9,15 @@ const emit = defineEmits(['fit'])
 
 const PADDING = 6
 const WHEEL_ZOOM_FACTOR = 1.2
-const THUMBNAIL_SETTLE_MS = 350
 const REGION_MARGIN_RATIO = 0.25
+const OUTLINE_PX = 1.5
+const CONTENT_THROTTLE_MS = 100
 
 const panelRef = ref(null)
+const canvasRef = ref(null)
 const { width: panelWidth, height: panelHeight } = useElementSize(panelRef)
 
-const thumbnail = shallowRef(null)
+const content = shallowRef(null)
 const extent = shallowRef(null)
 const frozenTransform = shallowRef(null)
 
@@ -31,8 +33,8 @@ const padBox = (box) => {
 
 const transform = computed(() => {
   if (frozenTransform.value) return frozenTransform.value
-  if (!thumbnail.value || !extent.value || !panelWidth.value) return null
-  const box = unionBox(padBox(thumbnail.value.box), extent.value)
+  if (!content.value || !extent.value || !panelWidth.value) return null
+  const box = unionBox(padBox(content.value), extent.value)
   const scale = Math.min((panelWidth.value - PADDING * 2) / box.w, (panelHeight.value - PADDING * 2) / box.h)
   return {
     scale,
@@ -41,34 +43,125 @@ const transform = computed(() => {
   }
 })
 
-const toPanelStyle = (box) => {
+const viewStyle = computed(() => {
+  if (!transform.value) return null
   const { scale, x0, y0 } = transform.value
-  return {
-    left: `${x0 + box.x1 * scale}px`,
-    top: `${y0 + box.y1 * scale}px`,
-    width: `${box.w * scale}px`,
-    height: `${box.h * scale}px`,
-  }
+  const { x1, y1, w, h } = extent.value
+  return { left: `${x0 + x1 * scale}px`, top: `${y0 + y1 * scale}px`, width: `${w * scale}px`, height: `${h * scale}px` }
+})
+
+const nodesBox = (cy) => {
+  const box = { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity }
+  cy.nodes().forEach((n) => {
+    if (!n.visible()) return
+    const { x, y } = n.position()
+    const w = n.outerWidth() / 2
+    const h = n.outerHeight() / 2
+    box.x1 = Math.min(box.x1, x - w)
+    box.y1 = Math.min(box.y1, y - h)
+    box.x2 = Math.max(box.x2, x + w)
+    box.y2 = Math.max(box.y2, y + h)
+  })
+  return box.x1 === Infinity ? null : { ...box, w: box.x2 - box.x1, h: box.y2 - box.y1 }
 }
 
-const thumbnailStyle = computed(() => transform.value && toPanelStyle(thumbnail.value.box))
-const viewStyle = computed(() => transform.value && toPanelStyle(extent.value))
+const rgba = ([r, g, b], opacity) => `rgba(${r},${g},${b},${opacity})`
 
-const renderThumbnail = debounce(() => {
-  const cy = props.cy
-  if (!cy || !panelWidth.value) return
-  const bb = cy.elements().boundingBox()
-  if (!cy.elements().length || !bb.w || !bb.h) {
-    thumbnail.value = null
-    return
+const pathOf = (paths, key) => paths.get(key) ?? paths.set(key, new Path2D()).get(key)
+
+const drawGraph = (ctx, cy, scale) => {
+  const centers = new Map()
+  const fills = new Map()
+  const outlines = new Map()
+  cy.nodes().forEach((n) => {
+    if (!n.visible()) return
+    const center = n.position()
+    const w = n.outerWidth()
+    const h = n.outerHeight()
+    const opacity = n.effectiveOpacity()
+    const box = [center.x - w / 2, center.y - h / 2, w, h, Math.min(w, h) * 0.2]
+    centers.set(n.id(), center)
+    pathOf(fills, rgba(n.pstyle('background-color').value, opacity)).roundRect(...box)
+    if (n.selected() || n.data('isRoot')) pathOf(outlines, rgba(n.pstyle('border-color').value, opacity)).roundRect(...box)
+  })
+  const lines = new Map()
+  cy.edges().forEach((e) => {
+    const from = centers.get(e.data('source'))
+    const to = centers.get(e.data('target'))
+    if (!from || !to || !e.visible()) return
+    const path = pathOf(lines, rgba(e.pstyle('line-color').value, e.effectiveOpacity()))
+    path.moveTo(from.x, from.y)
+    path.lineTo(to.x, to.y)
+  })
+  ctx.lineWidth = 1 / scale
+  lines.forEach((path, color) => {
+    ctx.strokeStyle = color
+    ctx.stroke(path)
+  })
+  fills.forEach((path, color) => {
+    ctx.fillStyle = color
+    ctx.fill(path)
+  })
+  ctx.lineWidth = OUTLINE_PX / scale
+  outlines.forEach((path, color) => {
+    ctx.strokeStyle = color
+    ctx.stroke(path)
+  })
+}
+
+const draw = () => {
+  const canvas = canvasRef.value
+  if (!canvas || !panelWidth.value) return
+  const ratio = window.devicePixelRatio || 1
+  const width = Math.round(panelWidth.value * ratio)
+  const height = Math.round(panelHeight.value * ratio)
+  if (canvas.width !== width || canvas.height !== height) Object.assign(canvas, { width, height })
+  const ctx = canvas.getContext('2d')
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.clearRect(0, 0, width, height)
+  const t = transform.value
+  if (!props.cy || !t) return
+  ctx.setTransform(ratio * t.scale, 0, 0, ratio * t.scale, ratio * t.x0, ratio * t.y0)
+  drawGraph(ctx, props.cy, t.scale)
+}
+
+let frame = 0
+let isContentDirty = true
+let isPaintDirty = true
+let painted = null
+
+const isSameTransform = (a, b) => !!a && !!b && a.scale === b.scale && a.x0 === b.x0 && a.y0 === b.y0
+
+const flushDraw = () => {
+  frame = 0
+  if (isContentDirty && props.cy) {
+    isContentDirty = false
+    isPaintDirty = true
+    content.value = nodesBox(props.cy)
   }
-  const box = { ...bb, w: Math.ceil(bb.w), h: Math.ceil(bb.h) }
-  const scale = Math.min(panelWidth.value / box.w, panelHeight.value / box.h)
-  thumbnail.value = { box, src: cy.png({ full: true, scale }) }
-}, THUMBNAIL_SETTLE_MS)
+  if (!isPaintDirty && isSameTransform(transform.value, painted)) return
+  isPaintDirty = false
+  painted = transform.value
+  draw()
+}
+
+const scheduleDraw = () => {
+  if (!frame) frame = requestAnimationFrame(flushDraw)
+}
+
+const repaint = () => {
+  isPaintDirty = true
+  scheduleDraw()
+}
+
+const markContent = throttle(() => {
+  isContentDirty = true
+  scheduleDraw()
+}, CONTENT_THROTTLE_MS)
 
 const updateExtent = () => {
   extent.value = props.cy?.extent() ?? null
+  scheduleDraw()
 }
 
 const contentEvents = 'add remove position data class select unselect'
@@ -78,24 +171,25 @@ watch(
   (cy, _, onCleanup) => {
     if (!cy) return
     cy.on('viewport resize', updateExtent)
-    cy.on(contentEvents, renderThumbnail)
+    cy.on(contentEvents, markContent)
     updateExtent()
-    renderThumbnail()
+    markContent()
     onCleanup(() => {
       cy.off('viewport resize', updateExtent)
-      cy.off(contentEvents, renderThumbnail)
+      cy.off(contentEvents, markContent)
     })
   },
   { immediate: true },
 )
 
-const refreshThumbnail = () => {
-  renderThumbnail()
-  if (!thumbnail.value) renderThumbnail.flush()
-}
+watch(() => props.isDark, () => nextTick(markContent))
+watch([panelWidth, panelHeight], repaint)
+watch(frozenTransform, scheduleDraw)
 
-watch([() => props.isDark, panelWidth, panelHeight], () => nextTick(refreshThumbnail))
-tryOnScopeDispose(() => renderThumbnail.cancel())
+tryOnScopeDispose(() => {
+  markContent.cancel()
+  cancelAnimationFrame(frame)
+})
 
 const isOverView = ref(false)
 let grabOffset = null
@@ -163,14 +257,7 @@ const handleWheel = (e) => {
     @wheel.prevent="handleWheel"
     @dblclick="emit('fit')"
   >
-    <img
-      v-if="thumbnailStyle"
-      :src="thumbnail.src"
-      :style="thumbnailStyle"
-      alt=""
-      draggable="false"
-      class="absolute max-w-none pointer-events-none"
-    />
+    <canvas ref="canvasRef" class="absolute inset-0 w-full h-full pointer-events-none"></canvas>
     <div
       v-if="viewStyle"
       :style="viewStyle"
