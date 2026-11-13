@@ -21,7 +21,6 @@ const isOpen = useStorage('3d-mql-console-open', false)
 const input = ref('')
 const pending = ref(0)
 const isRunning = computed(() => pending.value > 0)
-const runCount = ref(0)
 const writeCount = ref(0)
 let seq = 0
 
@@ -137,7 +136,6 @@ const execute = async (text) => {
     entry.elapsed = Date.now() - startedAt
     entry.isRunning = false
     pending.value--
-    runCount.value++
     if (hasWriteStatement(text)) writeCount.value++
   }
   return entry
@@ -166,7 +164,6 @@ export const useMqlConsole = () => ({
   input,
   entries,
   isRunning,
-  runCount,
   writeCount,
   run,
   clear,

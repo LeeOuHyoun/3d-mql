@@ -16,7 +16,7 @@ const isChecking = ref(false)
 
 const checkAccess = async () => {
   const name = user.value.trim()
-  if (!name) return
+  if (!name || isChecking.value) return
   isChecking.value = true
   try {
     userAccess.value = { user: name, access: await request('access', { id: props.id, user: name }), error: '' }

@@ -448,6 +448,7 @@ const contextMenuItems = computed(() => {
         :selectionCount="selectionCount"
         :detail="detail"
         :isLoading="isDetailLoading"
+        :isBusy="isLoading"
         @close="isDetailPanelOpen = false"
         @opened="revealSelected"
         @locate="locateSelected"

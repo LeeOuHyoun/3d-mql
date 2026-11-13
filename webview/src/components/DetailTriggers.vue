@@ -29,13 +29,18 @@ const groups = computed(() =>
 )
 
 const actionError = ref('')
+let isPerforming = false
 
 const perform = async (method, params) => {
+  if (isPerforming) return
+  isPerforming = true
   actionError.value = ''
   try {
     await request(method, params)
   } catch (e) {
     actionError.value = e.message
+  } finally {
+    isPerforming = false
   }
 }
 

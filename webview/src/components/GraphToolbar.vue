@@ -214,7 +214,12 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         <X :size="12" />
       </button>
     </div>
-    <button :class="[iconBtnClass, props.isStale && 'text-amber-500!']" :title="refreshTitle" @click="emit('refresh')">
+    <button
+      :class="[iconBtnClass, props.isStale && 'text-amber-500!', 'disabled:opacity-30 disabled:cursor-default']"
+      :title="refreshTitle"
+      :disabled="props.isLoading"
+      @click="emit('refresh')"
+    >
       <DatabaseBackup :size="16" />
     </button>
     <button :class="iconBtnClass" title="그래프 지우기 (Ctrl+L)" @click="emit('clear')">
