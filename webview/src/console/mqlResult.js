@@ -1,6 +1,7 @@
 import { escapeRegExp } from 'lodash-es'
 
 const BUS_HEAD = ['type', 'name', 'revision']
+const GRID_AUTO_ROWS = 1000
 
 export const OBJECT_ID_PATTERN = /\b\d+\.\d+\.\d+\.\d+\b/g
 
@@ -75,6 +76,12 @@ export const gridOf = (command, output) => {
   if (!lines.length) return null
   const separator = dumpSeparator(command)
   return separator ? dumpGrid(command, lines, separator) : selectGrid(lines)
+}
+
+export const opensAsGrid = (command, output) => {
+  if (!dumpSeparator(command)) return false
+  const grid = gridOf(command, output)
+  return !!grid && grid.rows.length <= GRID_AUTO_ROWS
 }
 
 export const gridTsv = (grid) => {

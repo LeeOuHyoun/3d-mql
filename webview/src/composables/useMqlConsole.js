@@ -1,5 +1,6 @@
 import { clamp } from 'lodash-es'
 import { request } from '@/api.js'
+import { opensAsGrid } from '@/console/mqlResult.js'
 
 const HISTORY_LIMIT = 100
 const STREAM_FLUSH_MS = 100
@@ -86,7 +87,7 @@ const execute = async (text) => {
   try {
     const { output, error } = await request('run', { command: text }, stream.push)
     stream.flush()
-    Object.assign(entry, { output: output.trim(), error, isFailed: !!error })
+    Object.assign(entry, { output: output.trim(), error, isFailed: !!error, isGrid: !error && opensAsGrid(text, output) })
   } catch (e) {
     stream.flush()
     entry.error = e.message
