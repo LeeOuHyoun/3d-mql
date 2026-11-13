@@ -108,12 +108,12 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
     }
   })
 
-  const runChanges = async (targets, isPreview) => {
+  const runChanges = async (isPreview) => {
     isApplying.value = true
     const createdIds = []
     const connected = []
     try {
-      for (const change of targets) {
+      for (const change of pendingChanges.value) {
         if (isPreview && !transaction.value) break
         const { error, output } = await runChange(change.forward)
         const createdId = change.kind === 'create' && !error ? output.match(OBJECT_ID_PATTERN)?.at(-1) : undefined
@@ -130,21 +130,7 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
     await onApplied(createdIds, connected)
   }
 
-  const applyChanges = () => runChanges(pendingChanges.value, false)
-
-  const applyNow = async (params, meta) => {
-    if (isLocked('바구니를 실행하는 동안에는 바로 실행할 수 없습니다.')) return
-    const change = await buildChange(params, meta)
-    changes.value = [...changes.value, { ...change, status: '', error: '' }]
-    const target = changes.value.at(-1)
-    await runChanges([target], false)
-    const isFailed = target.status === 'failed'
-    post({
-      type: 'notify',
-      warning: isFailed,
-      text: isFailed ? `실행하지 못해 변경 바구니에 남겨 두었습니다: ${meta.label}` : `바로 실행했습니다: ${meta.label}`,
-    })
-  }
+  const applyChanges = () => runChanges(false)
 
   const transaction = ref(null)
 
@@ -182,7 +168,7 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
       return
     }
     transaction.value = { remaining: TRANSACTION_SECONDS, keys }
-    await runChanges(pendingChanges.value, true)
+    await runChanges(true)
   }
 
   watch(
@@ -246,7 +232,7 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
     clearHistory,
     archiveDone,
     applyChanges,
-    applyNow,
+    isLocked,
     previewChanges,
     finishTransaction,
     exportScript,

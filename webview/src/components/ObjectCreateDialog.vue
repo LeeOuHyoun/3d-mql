@@ -5,6 +5,7 @@ import { useLoader } from '../composables/useLoader.js'
 import { toFields, useChangePreview } from '../composables/useChangePreview.js'
 import AttributeField from './AttributeField.vue'
 import BaseDialog from './BaseDialog.vue'
+import ChangeActions from './ChangeActions.vue'
 import ComboInput from './ComboInput.vue'
 import RelationshipFields from './RelationshipFields.vue'
 
@@ -14,6 +15,7 @@ const plmTypePattern = /^PLM(Core|Entity)/
 const props = defineProps({
   options: { type: Object, required: true },
   isConnecting: { type: Boolean, default: false },
+  isBusy: { type: Boolean, default: false },
 })
 const emit = defineEmits(['submit', 'close'])
 
@@ -177,14 +179,18 @@ const title = draft
     ? `새 객체 만들어 연결 · ${anchor.name} ${anchor.revision}`
     : '새 객체 만들기'
 
-const handleSubmit = () => {
+const handleSubmit = (isImmediate) => {
   if (!canSubmit.value) return
-  emit('submit', {
-    object: objectSpec.value,
-    link: anchor
-      ? { isAnchorFrom: !isSwapped.value, relType: relName.value, attributes: toFields(linkAttributes.value) }
-      : null,
-  })
+  emit(
+    'submit',
+    {
+      object: objectSpec.value,
+      link: anchor
+        ? { isAnchorFrom: !isSwapped.value, relType: relName.value, attributes: toFields(linkAttributes.value) }
+        : null,
+    },
+    isImmediate,
+  )
 }
 
 const inputClass =
@@ -197,7 +203,7 @@ const codeClass =
 
 <template>
   <BaseDialog :title="title" width-class="w-[44rem]" @close="emit('close')">
-    <form class="flex-1 min-h-0 flex flex-col" @submit.prevent="handleSubmit">
+    <form class="flex-1 min-h-0 flex flex-col" @submit.prevent="handleSubmit(!draft)">
       <div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-3">
         <div class="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-2 items-center">
           <template v-for="field in basicFields" :key="field.key">
@@ -267,20 +273,14 @@ const codeClass =
           * 표시 항목{{ anchor ? '과 Relationship' : '' }}을 채우면 실행 문장 미리보기가 나옵니다.
         </div>
         <div class="flex justify-end gap-2">
-          <button
-            type="button"
-            class="h-7 px-3 rounded-md border border-gray-200 dark:border-[#3e4451] bg-transparent text-xs cursor-pointer"
-            @click="emit('close')"
-          >
-            취소
-          </button>
-          <button
-            type="submit"
-            :disabled="!canSubmit"
-            class="h-7 px-3 rounded-md border-none bg-[#61afef] hover:bg-[#4b8bca] text-white text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-default"
-          >
-            {{ draft ? '바구니 항목 고치기' : '바구니에 담기' }}
-          </button>
+          <ChangeActions
+            :can-submit="canSubmit"
+            :is-busy="props.isBusy"
+            :has-immediate="!draft"
+            :basket-label="draft ? '바구니 항목 고치기' : '바구니에 담기'"
+            @basket="handleSubmit(false)"
+            @close="emit('close')"
+          />
         </div>
       </div>
     </form>

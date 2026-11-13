@@ -1,5 +1,6 @@
-import { countBy, debounce, isEqual, partition, pick, uniq, uniqWith, upperFirst } from 'lodash-es'
+import { countBy, debounce, isEqual, partition, pick, uniq, uniqWith } from 'lodash-es'
 import { cachedRequest, clearRequestCache, getState, onMessage, post, request, setState } from '@/api.js'
+import { OBJECT_ID_PATTERN } from '@/console/mqlResult.js'
 import { useTheme } from './useTheme.js'
 import { useGraphCytoscape } from './useGraphCytoscape.js'
 import { useRelationFilter } from './useRelationFilter.js'
@@ -723,21 +724,11 @@ export function useGraphExplorer() {
     return node ? `${node.name} ${node.revision}` : id
   }
 
-  const policyOf = async (id) => {
-    const { basics } = await requestDetail('object', id)
-    return basics.find((field) => field.key === 'policy')?.value
-  }
-
   const changeMeta = {
     connect: ({ from, to, relType }) => ({
       label: `connect · ${nameOf(from)} → ${relType} → ${nameOf(to)}`,
       edge: { from, to, relType },
       trigger: { source: { relationship: relType }, prefix: 'Create' },
-    }),
-    disconnect: ({ id, from, to, relType }) => ({
-      label: `disconnect · ${nameOf(from)} → ${relType} → ${nameOf(to)}`,
-      marks: [id],
-      trigger: { source: { relationship: relType }, prefix: 'Delete' },
     }),
     modify: ({ target, id, fields, relType }) => ({
       label: `modify · ${target === 'connection' ? relType : nameOf(id)} · ${uniq(fields.map((field) => field.key)).join(', ')}`,
@@ -756,36 +747,35 @@ export function useGraphExplorer() {
       },
       trigger: { source: { type: object.type }, prefix: 'Create' },
     }),
-    delete: ({ id, connections }) => ({
-      label: `delete · ${nameOf(id)}${connections ? ` · 연결 ${connections}건 함께 삭제` : ''}`,
-      marks: [id],
-      trigger: { source: { type: rawNodes[id]?.type }, prefix: 'Delete' },
-    }),
   }
 
-  const stateMeta = async ({ kind, id, signature }) => ({
-    label: [kind, nameOf(id), signature].filter(Boolean).join(' · '),
-    marks: [id],
-    trigger: { source: { policy: await policyOf(id) }, state: rawNodes[id]?.current, prefix: upperFirst(kind) },
-  })
-
-  const metaOf = async (params) => ({ kind: params.kind, ...(await (changeMeta[params.kind] ?? stateMeta)(params)) })
+  const metaOf = async (params) => ({ kind: params.kind, ...changeMeta[params.kind](params) })
 
   const stageChange = guarded(async (params) => basket.stageChange(params, await metaOf(params)))
 
-  const applyNow = guarded(async (params) => basket.applyNow(params, await metaOf(params)))
+  const runNow = guarded(async (params) => {
+    if (basket.isLocked('바구니를 실행하는 동안에는 바로 실행할 수 없습니다.')) return
+    const { forward } = await request('change', params)
+    const entry = await runInConsole(forward, { fill: false })
+    if (!entry) return
+    if (entry.error) throw new Error(entry.error)
+    const createdId = params.kind === 'create' ? entry.output.match(OBJECT_ID_PATTERN)?.at(-1) : undefined
+    post({ type: 'notify', text: `실행했습니다: ${forward}` })
+    await onApplied(createdId ? [createdId] : [], params.kind === 'connect' ? [params] : [])
+    return { createdId }
+  })
 
   const restorableAttributes = async (attributes) => {
     const metas = await cachedRequest('attributes', { names: attributes.map((field) => field.key) }).catch(() => [])
     return attributes.filter((field, index) => field.value || metas[index]?.default)
   }
 
-  const stageDisconnect = exclusive(
+  const runDisconnect = exclusive(
     (id) => `disconnect:${id}`,
     guarded(async (id) => {
       const { from, to, fromRel, toRel, label } = rawEdges[id]
       const { attributes } = await requestDetail('connection', id)
-      await stageChange({
+      await runNow({
         kind: 'disconnect',
         id,
         from,
@@ -802,7 +792,7 @@ export function useGraphExplorer() {
 
   const submitConnect = (params, isImmediate) => {
     connectDialog.value = null
-    const action = isImmediate ? applyNow : stageChange
+    const action = isImmediate ? runNow : stageChange
     action({ kind: 'connect', ...params })
   }
 
@@ -830,10 +820,11 @@ export function useGraphExplorer() {
     if (selectedItem.value) openEdit(selectedItem.value, focus)
   }
 
-  const submitEdit = guarded(async ({ fields }) => {
+  const submitEdit = guarded(async ({ fields }, isImmediate) => {
     const { target, id, relType, key } = editTarget.value
     editTarget.value = null
     const params = { kind: 'modify', target, id, relType, fields }
+    if (isImmediate) return runNow(params)
     if (!key) return stageChange(params)
     if (!fields.length) return basket.removeChange(key)
     await basket.updateChange(key, params, await metaOf(params))
@@ -867,7 +858,7 @@ export function useGraphExplorer() {
     }
   }
 
-  const submitCreate = guarded(async ({ object, link }) => {
+  const submitCreate = guarded(async ({ object, link }, isImmediate) => {
     const { key, anchor } = createDialog.value
     createDialog.value = null
     const params = { kind: 'create', object }
@@ -876,26 +867,24 @@ export function useGraphExplorer() {
       await restageDependents(key)
       return
     }
-    const createdKey = await stageChange(params)
-    if (!link || !createdKey) return
-    const ends = [anchor.id, pendingId(createdKey)]
+    const action = isImmediate ? runNow : stageChange
+    const result = await action(params)
+    const newId = isImmediate ? result?.createdId : result && pendingId(result)
+    if (!link || !newId) return
+    const ends = [anchor.id, newId]
     const [from, to] = link.isAnchorFrom ? ends : ends.reverse()
-    await stageChange({ kind: 'connect', from, to, relType: link.relType, attributes: link.attributes })
+    await action({ kind: 'connect', from, to, relType: link.relType, attributes: link.attributes })
   })
 
   const editPending = (id) => openCreate(null, pendingKey(id))
 
   const removePending = (id) => basket.removeChange(pendingKey(id))
 
-  const stageDelete = exclusive(
+  const runDelete = exclusive(
     (id) => `delete:${id}`,
     guarded(async (id) => {
       if (id === rootId.value) {
-        throw new Error('기준 객체는 삭제 문장을 담을 수 없습니다. 다른 객체를 기준 객체로 연 뒤 담으세요.')
-      }
-      if (basket.pendingChanges.value.some((change) => change.kind === 'delete' && change.params?.id === id)) {
-        post({ type: 'notify', text: '이 객체의 삭제 문장이 이미 바구니에 있습니다.' })
-        return
+        throw new Error('기준 객체는 삭제할 수 없습니다. 다른 객체를 기준 객체로 연 뒤 삭제하세요.')
       }
       const [{ summary, basics, attributes }, connections] = await Promise.all([
         request('object', { id }),
@@ -909,7 +898,7 @@ export function useGraphExplorer() {
         fields: basics.filter((field) => restoreFields.includes(field.key)),
         attributes: await restorableAttributes(attributes),
       }
-      await stageChange({ kind: 'delete', id, object, connections })
+      await runNow({ kind: 'delete', id, object, connections })
     }),
   )
 
@@ -999,10 +988,10 @@ export function useGraphExplorer() {
     else if (action === 'compare') compareItems.value = menu.targets.map((t) => t.data())
     else if (action === 'findPath') showPath(menu.targets.map((t) => t.id()))
     else if (action === 'connect') openConnectDialog(menu.targets.map((t) => t.data()))
-    else if (action === 'disconnect') stageDisconnect(id)
+    else if (action === 'disconnect') runDisconnect(id)
     else if (action === 'edit') openEdit(toSelectedItem(menu.target))
     else if (action === 'createLinked') openCreate(menu.target.data())
-    else if (action === 'delete') stageDelete(id)
+    else if (action === 'delete') runDelete(id)
     else if (action === 'editPending') editPending(id)
     else if (action === 'removePending') removePending(id)
   }
@@ -1179,8 +1168,8 @@ export function useGraphExplorer() {
     pinClusterMember,
     expandCluster,
     basket,
-    stageChange,
-    stageDisconnect,
+    runNow,
+    runDisconnect,
     connectDialog,
     submitConnect,
     editTarget,

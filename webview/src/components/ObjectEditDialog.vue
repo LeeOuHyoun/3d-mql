@@ -6,9 +6,11 @@ import { useLoader } from '../composables/useLoader.js'
 import { useChangePreview } from '../composables/useChangePreview.js'
 import AttributeField from './AttributeField.vue'
 import BaseDialog from './BaseDialog.vue'
+import ChangeActions from './ChangeActions.vue'
 
 const props = defineProps({
   target: { type: Object, required: true },
+  isBusy: { type: Boolean, default: false },
 })
 const emit = defineEmits(['submit', 'close'])
 
@@ -117,8 +119,8 @@ const submitLabel = computed(() => {
   return changedFields.value.length ? '바구니 항목 고치기' : '바구니에서 빼기'
 })
 
-const handleSubmit = () => {
-  if (canSubmit.value) emit('submit', { fields: changedFields.value })
+const handleSubmit = (isImmediate) => {
+  if (canSubmit.value) emit('submit', { fields: changedFields.value }, isImmediate)
 }
 
 const labelClass = 'text-gray-500 dark:text-[#5c6370] break-all'
@@ -134,7 +136,12 @@ const codeClass =
       불러오는 중...
     </div>
     <div v-else-if="error" class="p-4 text-red-500 whitespace-pre-wrap break-all">{{ error }}</div>
-    <form v-else-if="data" ref="formRef" class="flex-1 min-h-0 flex flex-col" @submit.prevent="handleSubmit">
+    <form
+      v-else-if="data"
+      ref="formRef"
+      class="flex-1 min-h-0 flex flex-col"
+      @submit.prevent="handleSubmit(!isStaged)"
+    >
       <div class="flex-1 min-h-0 overflow-auto p-4 grid grid-cols-[9rem_1fr] gap-x-3 gap-y-2 items-center">
         <template v-for="row in readonlyRows" :key="row.label">
           <span :class="labelClass">{{ row.label }}</span>
@@ -161,20 +168,14 @@ const codeClass =
         </div>
         <div class="flex items-center justify-end gap-2">
           <span class="flex-1 text-gray-400">바뀐 항목 {{ changedFields.length }}개</span>
-          <button
-            type="button"
-            class="h-7 px-3 rounded-md border border-gray-200 dark:border-[#3e4451] bg-transparent text-xs cursor-pointer"
-            @click="emit('close')"
-          >
-            취소
-          </button>
-          <button
-            type="submit"
-            :disabled="!canSubmit"
-            class="h-7 px-3 rounded-md border-none bg-[#61afef] hover:bg-[#4b8bca] text-white text-xs font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-default"
-          >
-            {{ submitLabel }}
-          </button>
+          <ChangeActions
+            :can-submit="canSubmit"
+            :is-busy="props.isBusy"
+            :has-immediate="!isStaged"
+            :basket-label="submitLabel"
+            @basket="handleSubmit(false)"
+            @close="emit('close')"
+          />
         </div>
       </div>
     </form>

@@ -45,13 +45,17 @@ const chipClass = 'px-1.5 rounded bg-gray-100 dark:bg-white/10 text-[11px] text-
 <template>
   <div>
     <div class="px-4 py-2 flex gap-2 border-b border-gray-200 dark:border-[#3e4451]">
-      <button :class="actionBtnClass" title="변경 바구니에 담습니다." @click="emit('change', { kind: 'promote' })">
+      <button :class="actionBtnClass" title="바로 실행합니다." @click="emit('change', { kind: 'promote' })">
         <CircleArrowUp :size="14" />
-        Promote 문장
+        Promote
       </button>
-      <button :class="actionBtnClass" title="변경 바구니에 담습니다." @click="emit('change', { kind: 'demote' })">
+      <button
+        :class="actionBtnClass"
+        title="바로 실행합니다. 실행 전에 확인 창이 뜹니다."
+        @click="emit('change', { kind: 'demote' })"
+      >
         <CircleArrowDown :size="14" />
-        Demote 문장
+        Demote
       </button>
     </div>
     <div
@@ -89,7 +93,7 @@ const chipClass = 'px-1.5 rounded bg-gray-100 dark:bg-white/10 text-[11px] text-
             v-for="kind in signActions"
             :key="kind"
             :class="linkBtnClass"
-            :title="`${kind} 문장을 변경 바구니에 담습니다.`"
+            :title="`${kind} 를 바로 실행합니다.`"
             @click="emit('change', { kind, signature: signature.name })"
           >
             {{ kind }}

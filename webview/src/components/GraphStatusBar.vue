@@ -29,7 +29,7 @@ const dividerClass = 'w-px h-4 mx-1 shrink-0 bg-gray-200 dark:bg-[#3e4451]'
   >
     <slot name="start" />
     <div class="ml-auto min-w-0 flex items-center gap-1">
-      <button :class="iconBtnClass" title="새 객체 만들기 (생성 문장을 변경 바구니에 담음)" @click="emit('create')">
+      <button :class="iconBtnClass" title="새 객체 만들기" @click="emit('create')">
         <PackagePlus :size="14" />
       </button>
       <button

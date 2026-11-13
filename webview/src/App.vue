@@ -107,8 +107,8 @@ const {
   pinClusterMember,
   expandCluster,
   basket,
-  stageChange,
-  stageDisconnect,
+  runNow,
+  runDisconnect,
   connectDialog,
   submitConnect,
   editTarget,
@@ -122,6 +122,7 @@ const {
 } = useGraphExplorer()
 
 const { changes, isBasketOpen, isApplying, transaction, finishTransaction } = basket
+const isBasketBusy = computed(() => isApplying.value || !!transaction.value)
 
 const isMinimapOpen = useStorage('3d-mql-minimap-open', true)
 const graphPane = ref(null)
@@ -250,7 +251,7 @@ const graphMenuItems = {
     { action: 'expandOptions', label: 'Expand 옵션...', icon: SlidersHorizontal, color: 'text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/40' },
     { action: 'setRoot', label: '기준 객체로 보기', icon: Crosshair, color: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/40' },
     linkExistingItem('Link Existing Nodes'),
-    { action: 'edit', label: '편집 (수정 문장 만들기)...', icon: Pencil, color: violetColor },
+    { action: 'edit', label: '편집...', icon: Pencil, color: violetColor },
     { action: 'createLinked', label: '새 객체 만들어 연결...', icon: PackagePlus, color: violetColor },
     pathGroup('기준 객체에서 여기까지의 select 식'),
     copyGroup('Copy', [
@@ -259,7 +260,7 @@ const graphMenuItems = {
       ...busQueryItems,
       queryItem('revisions', 'temp query bus (All Revisions)'),
     ]),
-    { action: 'delete', label: '삭제 문장 만들기', icon: Trash2, color: redColor },
+    { action: 'delete', label: '삭제', icon: Trash2, color: redColor },
   ],
   edge: [
     copyItem('id', 'Copy Relationship ID'),
@@ -267,14 +268,14 @@ const graphMenuItems = {
     queryItem('expandRel', 'expand bus (from, rel type)'),
     queryItem('queryConnection', 'query connection'),
     { action: 'edit', label: '관계 속성 편집...', icon: Pencil, color: violetColor },
-    { action: 'disconnect', label: '연결 해제 문장 만들기', icon: Unlink, color: redColor },
+    { action: 'disconnect', label: '연결 해제', icon: Unlink, color: redColor },
   ],
   cluster: [copyItem('memberIds', 'Copy Member IDs'), queryItem('expandCluster', 'expand bus (rel type)')],
   pendingNode: [{ action: 'editPending', label: '생성 문장 고치기...', icon: Pencil, color: violetColor }, removePendingItem],
   pendingEdge: [removePendingItem],
 }
 
-const connectItem = { action: 'connect', label: '연결 문장 만들기...', icon: Link, color: violetColor }
+const connectItem = { action: 'connect', label: '연결...', icon: Link, color: violetColor }
 
 const pairMenuItems = [
   { action: 'compare', label: '두 객체 비교', icon: GitCompareArrows, color: violetColor },
@@ -473,11 +474,11 @@ const contextMenuItems = computed(() => {
         @pin="pinClusterMember"
         @expandCluster="expandCluster"
         @where="addSearchCondition"
-        @change="stageChange"
+        @change="runNow"
         @edit="editSelected"
         @editPending="editPending"
         @removePending="removePending"
-        @disconnect="stageDisconnect"
+        @disconnect="runDisconnect"
         @attach="attachConnections"
       />
     </div>
@@ -532,19 +533,26 @@ const contextMenuItems = computed(() => {
         :items="connectDialog.items"
         :edges="connectDialog.edges"
         :relations="connectDialog.relations"
-        :isBusy="isApplying || !!transaction"
+        :isBusy="isBasketBusy"
         @submit="submitConnect"
         @close="connectDialog = null"
       />
     </Transition>
     <Transition name="dialog">
-      <ObjectEditDialog v-if="editTarget" :target="editTarget" @submit="submitEdit" @close="editTarget = null" />
+      <ObjectEditDialog
+        v-if="editTarget"
+        :target="editTarget"
+        :isBusy="isBasketBusy"
+        @submit="submitEdit"
+        @close="editTarget = null"
+      />
     </Transition>
     <Transition name="dialog">
       <ObjectCreateDialog
         v-if="createDialog"
         :options="createDialog"
         :is-connecting="connection.state === 'connecting'"
+        :isBusy="isBasketBusy"
         @submit="submitCreate"
         @close="createDialog = null"
       />

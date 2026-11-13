@@ -215,7 +215,7 @@ const valueMenuItems = computed(() => {
         icon: Funnel,
         color: menuColors.sky,
       },
-    canModify && { action: 'modify', label: '값 수정 문장 만들기…', icon: Pencil, color: menuColors.violet },
+    canModify && { action: 'modify', label: '값 수정…', icon: Pencil, color: menuColors.violet },
   ].filter(Boolean)
 })
 
@@ -275,7 +275,7 @@ const actionBtnClass =
         <button
           v-if="isEditable"
           :class="headerBtnClass"
-          title="편집 (수정 문장을 변경 바구니에 담음)"
+          title="편집"
           @click="emit('edit', null)"
         >
           <Pencil :size="14" />
@@ -429,11 +429,11 @@ const actionBtnClass =
                 actionBtnClass,
                 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40',
               ]"
-              title="연결 해제 문장과 되돌리는 문장을 변경 바구니에 담습니다."
+              title="이 연결을 바로 해제합니다. 실행 전에 확인 창이 뜹니다."
               @click="emit('disconnect', itemId)"
             >
               <Unlink :size="14" />
-              연결 해제 문장
+              연결 해제
             </button>
           </div>
           <div v-if="props.item.isNode" class="flex gap-2">
