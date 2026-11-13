@@ -101,10 +101,12 @@ const isEditable = computed(() => !!props.item && isReal.value && !props.item.is
 const tab = ref('properties')
 const extra = ref(null)
 const isExtraLoading = ref(false)
+let isExtraBusy = false
 
 const loadExtra = async () => {
   const id = itemId.value
-  if (!extraTabs.includes(tab.value) || extra.value?.id === id) return
+  if (isExtraBusy || !extraTabs.includes(tab.value) || extra.value?.id === id) return
+  isExtraBusy = true
   isExtraLoading.value = true
   try {
     const result = await request('objectExtra', { id })
@@ -112,7 +114,9 @@ const loadExtra = async () => {
   } catch (e) {
     if (id === itemId.value) extra.value = { id, error: e.message, states: [], history: [] }
   } finally {
+    isExtraBusy = false
     if (id === itemId.value) isExtraLoading.value = false
+    loadExtra()
   }
 }
 

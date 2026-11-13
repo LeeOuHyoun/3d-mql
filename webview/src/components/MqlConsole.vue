@@ -14,10 +14,8 @@ import {
   ArrowDown,
   CaseSensitive,
   Regex,
-  Crosshair,
   ChevronsDown,
   CornerRightUp,
-  CirclePlus,
 } from '@lucide/vue'
 import { request } from '../api.js'
 import { useMqlConsole } from '../composables/useMqlConsole.js'
@@ -29,6 +27,7 @@ import ConsoleAssist from './ConsoleAssist.vue'
 import ConsoleEntry from './ConsoleEntry.vue'
 import ConsoleHistory from './ConsoleHistory.vue'
 import ContextMenu from './ContextMenu.vue'
+import { graphOpenMenuItems } from './graphOpenMenuItems.js'
 
 const fullscreen = defineModel('fullscreen', { type: Boolean, default: false })
 const emit = defineEmits(['openRoot', 'highlight', 'add'])
@@ -140,18 +139,7 @@ const openObjectIdMenu = (e, id) => {
 }
 
 const objectIdMenuItems = [
-  {
-    action: 'openRoot',
-    label: '그래프에서 열기 (기준 객체)',
-    icon: Crosshair,
-    color: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/40',
-  },
-  {
-    action: 'add',
-    label: '그래프에 추가 (기준 객체 유지)',
-    icon: CirclePlus,
-    color: 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/40',
-  },
+  ...graphOpenMenuItems,
   {
     action: 'printBus',
     label: 'print bus 실행',
@@ -267,7 +255,11 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
       </button>
     </div>
     <div class="flex-1 min-h-0 flex">
-      <div ref="logRef" class="flex-1 min-w-0 overflow-auto px-3 py-2 font-mono text-[11px] flex flex-col gap-2">
+      <div
+        ref="logRef"
+        data-vscode-context='{"webviewSection":"consoleLog","preventDefaultContextMenuItems":true}'
+        class="flex-1 min-w-0 overflow-auto px-3 py-2 font-mono text-[11px] flex flex-col gap-2"
+      >
         <div v-if="!entries.length" class="text-gray-400 italic font-sans">
           MQL 명령을 입력하고 Ctrl+Enter로 실행합니다. Ctrl+↑/↓로 이전 명령을 불러오고, 결과의 Object ID를 클릭하면
           그래프에서 열 수 있습니다.

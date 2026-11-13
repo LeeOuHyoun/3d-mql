@@ -1,6 +1,7 @@
 <script setup>
 import { X, Copy, Crosshair, ListFilter } from '@lucide/vue'
 import ContextMenu from './ContextMenu.vue'
+import { graphOpenMenuItems } from './graphOpenMenuItems.js'
 import { usePanelResize } from '../composables/usePanelResize.js'
 
 const props = defineProps({
@@ -10,7 +11,7 @@ const props = defineProps({
   where: { type: String, default: '' },
   root: { type: Object, default: null },
 })
-const emit = defineEmits(['select', 'close'])
+const emit = defineEmits(['select', 'add', 'close'])
 
 const isLimited = computed(() => props.limit > 0 && props.results.length >= props.limit)
 const rootMarkClass = 'bg-[#e06c75]/10 shadow-[inset_4px_0_0_#e06c75]'
@@ -21,6 +22,7 @@ const { copy } = useClipboard({ legacy: true })
 const menu = shallowRef(null)
 const copyColor = 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/40'
 const menuItems = [
+  ...graphOpenMenuItems,
   { action: 'name', label: 'Copy Name', icon: Copy, color: copyColor, value: (item) => item.name },
   { action: 'tnr', label: 'Copy Type Name Rev', icon: Copy, color: copyColor, value: (item) => `${item.type} ${item.name} ${item.revision}` },
   { action: 'id', label: 'Copy ID', icon: Copy, color: copyColor, value: (item) => item.id },
@@ -31,9 +33,11 @@ const openMenu = (e, item) => {
 }
 
 const handleMenuAction = (action) => {
-  const target = menuItems.find((entry) => entry.action === action)
-  copy(target.value(menu.value.item))
+  const { item } = menu.value
   menu.value = null
+  if (action === 'openRoot') emit('select', item.id)
+  else if (action === 'add') emit('add', [item.id])
+  else copy(menuItems.find((entry) => entry.action === action).value(item))
 }
 </script>
 

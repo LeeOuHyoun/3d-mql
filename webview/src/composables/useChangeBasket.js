@@ -1,3 +1,4 @@
+import { partition } from 'lodash-es'
 import { post, request } from '@/api.js'
 import { OBJECT_ID_PATTERN } from '@/console/mqlResult.js'
 import { useMqlConsole } from './useMqlConsole.js'
@@ -16,6 +17,7 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
   const { run, openInEditor } = useMqlConsole()
   const runChange = (command) => run(command, { confirm: false, fill: false })
   const changes = ref([])
+  const history = ref([])
   const isBasketOpen = ref(false)
   const isApplying = ref(false)
   const pendingChanges = computed(() => changes.value.filter(isPending))
@@ -28,7 +30,8 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
   const buildChange = async (params, meta, key) => {
     const refs = { fromObject: createOf(params.from)?.params.object, toObject: createOf(params.to)?.params.object }
     const change = await request('change', { ...params, ...refs })
-    return { ...change, ...meta, params, key: key ?? Math.max(0, ...changes.value.map((item) => item.key)) + 1 }
+    const nextKey = Math.max(0, ...[...changes.value, ...history.value].map((item) => item.key)) + 1
+    return { ...change, ...meta, params, key: key ?? nextKey }
   }
 
   const stageChange = async (params, meta) => {
@@ -59,6 +62,25 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
 
   const clearChanges = () => {
     changes.value = []
+  }
+
+  const clearHistory = () => {
+    history.value = []
+  }
+
+  const archiveDone = () => {
+    const [done, rest] = partition(changes.value, (item) => !isPending(item))
+    if (!done.length) return
+    const createdIds = Object.fromEntries(
+      done.filter((item) => item.createdId).map((item) => [pendingId(item.key), item.createdId]),
+    )
+    const resolve = (id) => createdIds[id] ?? id
+    const withEnds = (ends) => ends && { ...ends, from: resolve(ends.from), to: resolve(ends.to) }
+    const doneAt = Date.now()
+    history.value = [...history.value, ...done.map((item) => ({ ...item, doneAt }))]
+    changes.value = rest.map((item) =>
+      item.kind === 'connect' ? { ...item, params: withEnds(item.params), edge: withEnds(item.edge) } : item,
+    )
   }
 
   const overlay = computed(() => {
@@ -104,6 +126,7 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
       isApplying.value = false
     }
     if (isPreview && transaction.value) resume()
+    if (!isPreview) archiveDone()
     await onApplied(createdIds, connected)
   }
 
@@ -123,6 +146,7 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
     transaction.value = null
     const { error } = await runChange(`${action} transaction;`)
     if (action === 'abort' || error) resetChanges(keys)
+    else archiveDone()
     await onApplied()
   }
 
@@ -180,9 +204,9 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
     )
 
   const exportRollback = () => {
-    const hasRun = changes.value.some((item) => item.status)
-    const targets = hasRun ? changes.value.filter((item) => !isPending(item)) : changes.value
-    const skipped = changes.value.length - targets.length
+    const ran = [...history.value, ...changes.value.filter((item) => !isPending(item))]
+    const targets = ran.length ? ran : changes.value
+    const skipped = ran.length ? pendingChanges.value.length : 0
     return openInEditor(
       scriptOf('롤백 스크립트', [
         ...(skipped ? [`# 실행하지 않은 문장 ${skipped}건은 되돌릴 것이 없어 뺐습니다.`] : []),
@@ -193,6 +217,7 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
 
   return {
     changes,
+    history,
     pendingChanges,
     isBasketOpen,
     isApplying,
@@ -204,6 +229,8 @@ export function useChangeBasket(connection, onApplied, scriptInfo) {
     updateChange,
     removeChange,
     clearChanges,
+    clearHistory,
+    archiveDone,
     applyChanges,
     previewChanges,
     finishTransaction,

@@ -2,7 +2,7 @@
   "name": "3d-mql",
   "displayName": "3D MQL Graph",
   "description": "ENOVIA MQL로 객체와 관계를 그래프로 탐색합니다.",
-  "version": "0.0.41",
+  "version": "0.0.42",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -30,6 +30,10 @@
       {
         "command": "3d-mql.graph.fit",
         "title": "3D MQL: 화면 맞춤"
+      },
+      {
+        "command": "3d-mql.graph.relayout",
+        "title": "3D MQL: 레이아웃 다시 정렬"
       },
       {
         "command": "3d-mql.graph.relationPanel",
@@ -74,16 +78,35 @@
       {
         "command": "3d-mql.graph.format",
         "title": "3D MQL: MQL 콘솔 입력 포매팅"
+      },
+      {
+        "command": "3d-mql.graph.copy",
+        "title": "복사"
       }
     ],
     "menus": {
+      "webview/context": [
+        {
+          "command": "3d-mql.graph.copy",
+          "when": "webviewId == '3d-mql.graph' && webviewSection == 'consoleLog'",
+          "group": "9_cutcopypaste"
+        }
+      ],
       "commandPalette": [
+        {
+          "command": "3d-mql.graph.copy",
+          "when": "false"
+        },
         {
           "command": "3d-mql.graph.clear",
           "when": "activeWebviewPanelId == '3d-mql.graph'"
         },
         {
           "command": "3d-mql.graph.fit",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
+        },
+        {
+          "command": "3d-mql.graph.relayout",
           "when": "activeWebviewPanelId == '3d-mql.graph'"
         },
         {
@@ -147,6 +170,11 @@
         "command": "3d-mql.graph.fit",
         "key": "ctrl+alt+f",
         "when": "activeWebviewPanelId == '3d-mql.graph'"
+      },
+      {
+        "command": "3d-mql.graph.relayout",
+        "key": "shift+alt+f",
+        "when": "activeWebviewPanelId == '3d-mql.graph' && !3d-mql.consoleFocus"
       },
       {
         "command": "3d-mql.graph.relationPanel",

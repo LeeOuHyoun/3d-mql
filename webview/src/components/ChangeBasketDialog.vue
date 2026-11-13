@@ -1,5 +1,5 @@
 <script setup>
-import { Check, X, Minus, Zap, Trash2, Play, FlaskConical, FileText, Undo2 } from '@lucide/vue'
+import { Check, X, Minus, Zap, Trash2, Play, FlaskConical, FileText, Undo2, History } from '@lucide/vue'
 import { cachedRequest } from '@/api.js'
 import BaseDialog from './BaseDialog.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -11,11 +11,13 @@ const emit = defineEmits(['close'])
 
 const {
   changes,
+  history,
   pendingChanges,
   isApplying,
   transaction,
   removeChange,
   clearChanges,
+  clearHistory,
   applyChanges,
   previewChanges,
   exportScript,
@@ -44,6 +46,9 @@ const statusIcons = {
   failed: { icon: X, class: 'text-red-500' },
 }
 const statusOf = (change) => statusIcons[change.status] ?? { icon: Minus, class: 'text-gray-400' }
+
+const recentHistory = computed(() => [...history.value].reverse())
+const timeOf = (at) => (at ? new Date(at).toLocaleString('sv') : '')
 
 const hints = reactive({})
 
@@ -111,8 +116,8 @@ const codeClass = 'm-0 font-mono text-[11px] whitespace-pre-wrap break-all'
       </button>
       <button
         :class="actionBtnClass"
-        :disabled="!changes.length"
-        title="실행한 문장이 있으면 그 문장만, 아직 실행하지 않았으면 바구니 전체를 역순으로 되돌립니다."
+        :disabled="!changes.length && !history.length"
+        title="실행 기록이 있으면 실행한 문장만, 없으면 바구니 전체를 역순으로 되돌립니다."
         @click="exportRollback"
       >
         <Undo2 :size="12" />
@@ -158,6 +163,28 @@ const codeClass = 'm-0 font-mono text-[11px] whitespace-pre-wrap break-all'
           <Trash2 :size="13" />
         </button>
       </div>
+      <details v-if="history.length" class="border-t border-gray-200 dark:border-[#3e4451]">
+        <summary class="px-4 py-2 flex items-center gap-2 cursor-pointer select-none text-gray-500">
+          <History :size="13" />
+          실행 기록 ({{ history.length }})
+          <div class="flex-1"></div>
+          <button :class="iconBtnClass" title="실행 기록 지우기" @click.prevent="clearHistory">
+            <Trash2 :size="13" />
+          </button>
+        </summary>
+        <div
+          v-for="change in recentHistory"
+          :key="change.key"
+          class="px-4 py-2 border-t border-gray-100 dark:border-[#3e4451]/60 flex gap-2 text-gray-500"
+        >
+          <Check :size="14" class="shrink-0 mt-0.5 text-emerald-500" />
+          <div class="flex-1 min-w-0 flex flex-col gap-1">
+            <div class="font-semibold break-all">{{ change.label }}</div>
+            <pre :class="codeClass">{{ change.forward }}</pre>
+          </div>
+          <span class="shrink-0 tabular-nums">{{ timeOf(change.doneAt) }}</span>
+        </div>
+      </details>
     </div>
     <Transition name="dialog">
       <ConfirmDialog

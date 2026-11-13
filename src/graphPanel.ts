@@ -25,6 +25,7 @@ import {
   printTriggers,
   relationshipAttributes,
   searchObjects,
+  searchQueryText,
   transactionAfter,
   typeChain,
   typeInfo,
@@ -192,6 +193,7 @@ export class GraphPanel {
       const limit = countSetting('searchLimit', 200);
       return searchObjects(this.client, params as SearchParams, limit).then((results) => ({ results, limit }));
     }
+    if (method === 'copySearch') return this.copySearch(params as SearchParams);
     if (method === 'expand') {
       const limit = countSetting('expandLimit', 500);
       return expandObject(this.client, id, params.direction as Direction, params as ExpandOptions, limit);
@@ -260,12 +262,21 @@ export class GraphPanel {
 
   private async query(method: string, action: string, targets: QueryTarget[]) {
     const text = buildQueryText(action, targets);
-    if (method === 'copy') {
-      await vscode.env.clipboard.writeText(text);
-      this.notify(`클립보드에 복사했습니다: ${text.split('\n')[0].slice(0, 80)}`);
-    }
+    if (method === 'copy') await this.copy(text);
     if (method === 'insert') await this.insert(text);
     return text;
+  }
+
+  private async copySearch(params: SearchParams) {
+    const type = params.type?.trim() ?? '';
+    const text = objectIdPattern.test(type) && !params.name?.trim() ? `print bus ${type};` : searchQueryText(params);
+    await this.copy(text);
+    return text;
+  }
+
+  private async copy(text: string) {
+    await vscode.env.clipboard.writeText(text);
+    this.notify(`클립보드에 복사했습니다: ${text.split('\n')[0].slice(0, 80)}`);
   }
 
   private async insert(text: string) {

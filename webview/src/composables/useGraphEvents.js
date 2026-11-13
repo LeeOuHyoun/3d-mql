@@ -41,7 +41,12 @@ export function useGraphEvents() {
       hideTooltip()
       hideContextMenu()
     })
-    cy.on('tapstart', hideContextMenu)
+    cy.on('tapstart', (evt) => {
+      hideContextMenu()
+      const { button, shiftKey, ctrlKey, metaKey } = evt.originalEvent ?? {}
+      if (evt.target === cy && !button && !shiftKey && !ctrlKey && !metaKey) container.value.style.cursor = 'grabbing'
+    })
+    cy.on('tapend', () => (container.value.style.cursor = ''))
     cy.on('cxttap', 'node, edge', (evt) => {
       const target = evt.target
       const isPending = !!target.data('isPending')

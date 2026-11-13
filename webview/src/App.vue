@@ -28,6 +28,7 @@ import { useMqlConsole } from './composables/useMqlConsole.js'
 import { useMinimapLayout } from './composables/useMinimapLayout.js'
 import GraphToolbar from './components/GraphToolbar.vue'
 import GraphStatusBar from './components/GraphStatusBar.vue'
+import GraphViewControls from './components/GraphViewControls.vue'
 import SearchPanel from './components/SearchPanel.vue'
 import RelationPanel from './components/RelationPanel.vue'
 import DetailPanel from './components/DetailPanel.vue'
@@ -68,6 +69,7 @@ const {
   isSearching,
   isSearchPanelOpen,
   onSearch,
+  copySearch,
   addSearchCondition,
   loadRoot,
   expand,
@@ -145,6 +147,7 @@ const paneFullscreen = (pane) =>
 const isGraphFullscreen = paneFullscreen('graph')
 const isConsoleFullscreen = paneFullscreen('console')
 const toggleGraphFullscreen = useToggle(isGraphFullscreen)
+const fullscreenTools = ref(null)
 const hasExitedGraphFullscreen = ref(false)
 
 whenever(
@@ -201,6 +204,7 @@ const shortcuts = {
   back: goBack,
   forward: goForward,
   graphFullscreen: toggleGraphFullscreen,
+  relayout: resetView,
   consoleFullscreen: toggleConsoleFullscreen,
   shortcuts: useToggle(isShortcutGuideOpen),
 }
@@ -311,6 +315,7 @@ const contextMenuItems = computed(() => {
       :history="rootHistory"
       :historyIndex="historyIndex"
       @search="onSearch"
+      @copySearch="copySearch"
       @refresh="refresh"
       @clear="clearGraph"
       @back="goBack"
@@ -320,12 +325,14 @@ const contextMenuItems = computed(() => {
     <Transition name="pop">
       <div
         v-if="errorMsg"
-        class="absolute top-14 left-4 right-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs rounded-xl z-[55] shadow-xl backdrop-blur-md flex items-center gap-2"
+        class="absolute top-14 left-4 right-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-xs rounded-xl z-[55] shadow-xl backdrop-blur-md flex items-start gap-2"
       >
-        <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0"></div>
-        <span class="flex-1 whitespace-pre-wrap break-all"><span class="font-semibold">Error:</span> {{ errorMsg }}</span>
+        <div class="w-2 h-2 mt-1.5 rounded-full bg-red-500 animate-pulse shrink-0"></div>
+        <span class="flex-1 max-h-[50vh] overflow-auto whitespace-pre-wrap break-all"
+          ><span class="font-semibold">Error:</span> {{ errorMsg }}</span
+        >
         <button
-          class="p-1 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg flex items-center justify-center bg-transparent border-none text-inherit cursor-pointer"
+          class="p-1 shrink-0 hover:bg-black/5 dark:hover:bg-white/10 rounded-lg flex items-center justify-center bg-transparent border-none text-inherit cursor-pointer"
           @click="errorMsg = ''"
         >
           <X :size="16" />
@@ -340,6 +347,7 @@ const contextMenuItems = computed(() => {
         :where="searchWhere"
         :root="rootItem"
         @select="loadRoot"
+        @add="addObjects"
         @close="isSearchPanelOpen = false"
       />
       <Transition name="dock-left">
@@ -359,15 +367,23 @@ const contextMenuItems = computed(() => {
             class="w-full h-full outline-none select-none overflow-hidden bg-white dark:bg-[#282c34]"
             @mouseleave="hideTooltip"
           ></div>
-          <button
-            class="absolute top-2 right-2 z-10 h-7 w-7 flex items-center justify-center rounded-md border border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#21252b]/90 text-gray-500 dark:text-[#abb2bf] hover:text-[#61afef] cursor-pointer"
-            :title="isGraphFullscreen ? '전체 화면 종료 (Esc)' : '그래프 전체 화면 (Ctrl+Alt+G)'"
-            @click="toggleGraphFullscreen()"
-            @mouseenter="hideTooltip"
-          >
-            <Minimize v-if="isGraphFullscreen" :size="14" />
-            <Fullscreen v-else :size="14" />
-          </button>
+          <div class="absolute top-2 right-2 z-10 flex items-center gap-1.5 text-xs" @mouseenter="hideTooltip">
+            <div
+              ref="fullscreenTools"
+              :class="
+                isGraphFullscreen &&
+                'h-7 px-1 flex items-center rounded-md border border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#21252b]/90'
+              "
+            ></div>
+            <button
+              class="h-7 w-7 flex items-center justify-center rounded-md border border-black/10 dark:border-white/10 bg-white/90 dark:bg-[#21252b]/90 text-gray-500 dark:text-[#abb2bf] hover:text-[#61afef] cursor-pointer"
+              :title="isGraphFullscreen ? '전체 화면 종료 (Esc)' : '그래프 전체 화면 (Ctrl+Alt+G)'"
+              @click="toggleGraphFullscreen()"
+            >
+              <Minimize v-if="isGraphFullscreen" :size="14" />
+              <Fullscreen v-else :size="14" />
+            </button>
+          </div>
           <Transition name="fade">
             <GraphNotice
               v-if="notice"
@@ -466,23 +482,31 @@ const contextMenuItems = computed(() => {
       />
     </div>
     <GraphStatusBar
-      v-model:isMinimapOpen="isMinimapOpen"
       v-model:isConsoleOpen="isConsoleOpen"
-      v-model:layoutType="layoutType"
-      :isDark="isDark"
       :connection="connection"
       :context="context"
-      :minimapPosition="minimapPosition"
       :changeCount="changes.length"
       @basket="isBasketOpen = true"
       @create="openCreate()"
-      @minimapPosition="setMinimapPosition"
-      @resetMinimap="resetMinimap"
-      @resetView="resetView"
-      @toggleTheme="toggleTheme"
       @reconnect="reconnect"
-      @shortcuts="isShortcutGuideOpen = true"
-    />
+    >
+      <template #start>
+        <Teleport defer :to="fullscreenTools" :disabled="!isGraphFullscreen">
+          <GraphViewControls
+            v-model:isMinimapOpen="isMinimapOpen"
+            v-model:layoutType="layoutType"
+            :isDark="isDark"
+            :minimapPosition="minimapPosition"
+            :isMenuBelow="isGraphFullscreen"
+            @minimapPosition="setMinimapPosition"
+            @resetMinimap="resetMinimap"
+            @resetView="resetView"
+            @toggleTheme="toggleTheme"
+            @shortcuts="isShortcutGuideOpen = true"
+          />
+        </Teleport>
+      </template>
+    </GraphStatusBar>
     <GraphTooltip v-if="tooltip" :tooltip="tooltip" />
     <ContextMenu
       v-if="contextMenu && contextMenuItems.length"

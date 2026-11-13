@@ -9,7 +9,8 @@ const SAVED_TOTAL_LIMIT = 2000000
 const SAVE_DELAY_MS = 500
 const TRIMMED_NOTE = '\n… (저장 용량 때문에 결과 앞부분만 복원했습니다)'
 const passwordPattern = /\bpassword\s+\S/i
-const readPattern = /^(print|list|temp|expand|query|help|version|eval)\b/i
+const readPattern =
+  /^(?:print|list|temp|expand|query|help|version|eval|verb\w*|(?:start|commit)\s+trans\w*|(?:set|push|pop)\s+cont\w*)\b/i
 
 export const hasWriteStatement = (command) =>
   command
@@ -136,7 +137,7 @@ const execute = async (text) => {
     entry.elapsed = Date.now() - startedAt
     entry.isRunning = false
     pending.value--
-    if (hasWriteStatement(text)) writeCount.value++
+    if (!entry.error && hasWriteStatement(text)) writeCount.value++
   }
   return entry
 }

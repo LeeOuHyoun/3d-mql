@@ -269,11 +269,16 @@ function splitFields(fields: Field[]) {
   return { basics, attributes };
 }
 
+const searchPattern = (type: string, params: SearchParams) =>
+  [type, params.name, params.revision].map((value) => quote(value?.trim() || '*')).join(' ');
+
+export const searchQueryText = (params: SearchParams) =>
+  `temp query bus ${searchPattern(params.type?.trim() ?? '', params)}${whereClause(params.where)} select id current;`;
+
 export async function searchObjects(client: MqlClient, params: SearchParams, limit: number): Promise<ObjectSummary[]> {
   const type = await actualType(client, params.type?.trim() ?? '');
-  const pattern = [type, params.name, params.revision].map((value) => quote(value?.trim() || '*')).join(' ');
   const text = await client.run(
-    `temp query bus ${pattern} limit ${limit}${whereClause(params.where)} select id current dump ${quote(separator)}`,
+    `temp query bus ${searchPattern(type, params)} limit ${limit}${whereClause(params.where)} select id current dump ${quote(separator)}`,
   );
   return dumpRows(text, 5).map(([type, name, revision, id, current]) => ({ id, type, name, revision, current }));
 }

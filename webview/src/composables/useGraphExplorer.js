@@ -445,6 +445,12 @@ export function useGraphExplorer() {
     ]
   }
 
+  const fetchInOrder = async (entries) => {
+    const results = []
+    for (const entry of entries) results.push(await explorers[entry.kind].fetch(entry).catch(() => null))
+    return results
+  }
+
   const refresh = exclusive(
     () => 'refresh',
     async () => {
@@ -458,7 +464,7 @@ export function useGraphExplorer() {
           clearRequestCache()
           const [{ summary }, results] = await Promise.all([
             requestDetail('object', rootId.value),
-            Promise.all(snapshot.map((entry) => explorers[entry.kind].fetch(entry).catch(() => null))),
+            fetchInOrder(snapshot),
           ])
           if (epoch !== graphEpoch) return
           const before = rawGraph()
@@ -573,7 +579,9 @@ export function useGraphExplorer() {
     }
   }
 
-  const addSearchCondition = ({ expression, type }) => {
+  const copySearch = guarded(() => request('copySearch', { ...searchForm }))
+
+  const addSearchCondition =({ expression, type }) => {
     searchForm.where = [searchForm.where.trim(), expression].filter(Boolean).join(' && ')
     if (!searchForm.type.replaceAll('*', '').trim()) searchForm.type = type
     post({ type: 'notify', text: `검색 조건에 추가했습니다: ${expression}` })
@@ -1003,6 +1011,7 @@ export function useGraphExplorer() {
       explorations,
       loadedAt: loadedAt.value,
       changes: basket.changes.value,
+      changeHistory: basket.history.value,
       rootId: rootId.value,
       searchForm: { ...searchForm },
       searchResults: searchResults.value,
@@ -1038,7 +1047,7 @@ export function useGraphExplorer() {
 
   useEventListener(window, 'pagehide', flushState)
   watch([searchForm, isSearchPanelOpen, hiddenRelations, relationFilter, graphFilter, selectedItem], persist)
-  watch(basket.changes, persist, { deep: true })
+  watch([basket.changes, basket.history], persist, { deep: true })
 
   const restoreLayout = ({ positions, viewport, detailId }) => {
     const cy = cyRef.value
@@ -1068,6 +1077,8 @@ export function useGraphExplorer() {
     loadedAt.value = saved.loadedAt ?? 0
     isStale.value = !!saved.rootId
     basket.changes.value = saved.changes ?? []
+    basket.history.value = saved.changeHistory ?? []
+    basket.archiveDone()
     rootId.value = saved.rootId
     Object.assign(searchForm, saved.searchForm)
     searchResults.value = saved.searchResults
@@ -1122,6 +1133,7 @@ export function useGraphExplorer() {
     isSearching,
     isSearchPanelOpen,
     onSearch,
+    copySearch,
     addSearchCondition,
     loadRoot,
     expand,

@@ -11,7 +11,6 @@ type Waiter = Pending & {
   lines: string[];
   streamed: number;
   onChunk?: Chunk;
-  discard?: boolean;
 };
 type Signal = { resolve: () => void; reject: (error: Error) => void };
 type Learning = Pending & {
@@ -316,15 +315,11 @@ export class MqlClient {
 
   private expire() {
     this.watchdog = undefined;
-    const error = new Error('MQL 응답 시간이 초과되었습니다.');
-    this.waiters
-      .filter((waiter) => !waiter.discard)
-      .forEach((waiter) => {
-        waiter.discard = true;
-        this.log(`timeout > ${waiter.command}`);
-        waiter.reject(error);
-      });
+    const error = new Error('MQL 응답 시간이 초과되어 MQL 세션을 다시 연결합니다.');
+    this.waiters.forEach((waiter) => this.log(`timeout > ${waiter.command}`));
     this.drainers.splice(0).forEach((drainer) => drainer.reject(error));
+    this.rejectAll(error);
+    void this.restart().catch(() => undefined);
   }
 
   private onOutput(text: string, pipe: Pipe) {
@@ -354,14 +349,14 @@ export class MqlClient {
     this.waiters.shift();
     const text = stripBlocks(head.lines, marker, 1).join('\n');
     this.logResponse(head.command, head.at, text);
-    if (!head.discard) this.settle(head, text);
+    this.settle(head, text);
     this.watch();
     if (!this.waiters.length) this.drainers.splice(0).forEach((drainer) => drainer.resolve());
   }
 
   private stream() {
     const head = this.waiters[0];
-    if (!head?.onChunk || head.discard || !this.marker) return;
+    if (!head?.onChunk || !this.marker) return;
     const end = head.lines.length - heldLines(head.lines, this.marker);
     if (end <= head.streamed) return;
     head.onChunk(
@@ -443,9 +438,7 @@ export class MqlClient {
   private rejectAll(error: Error) {
     clearTimeout(this.watchdog);
     this.watchdog = undefined;
-    this.waiters.splice(0).forEach((waiter) => {
-      if (!waiter.discard) waiter.reject(error);
-    });
+    this.waiters.splice(0).forEach((waiter) => waiter.reject(error));
     this.drainers.splice(0).forEach((drainer) => drainer.resolve());
     this.finishLearning(error);
     this.startWaiter?.reject(error);

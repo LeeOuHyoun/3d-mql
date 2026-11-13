@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { GraphPanel } from './graphPanel';
 
-const graphCommands = ['clear', 'fit', 'relationPanel', 'detailPanel', 'minimap', 'console', 'back', 'forward', 'graphFullscreen', 'consoleFullscreen', 'shortcuts', 'suggest', 'format'];
+const graphCommands = ['clear', 'fit', 'relayout', 'relationPanel', 'detailPanel', 'minimap', 'console', 'back', 'forward', 'graphFullscreen', 'consoleFullscreen', 'shortcuts', 'suggest', 'format'];
 
 export function activate(context: vscode.ExtensionContext) {
   const status = vscode.window.createStatusBarItem('3d-mql.open', vscode.StatusBarAlignment.Left, 99);
@@ -14,6 +14,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('3d-mql.openGraph', (id?: unknown) => GraphPanel.open(context, output, id)),
     vscode.commands.registerCommand('3d-mql.search', (query?: unknown) => GraphPanel.search(context, output, query)),
+    vscode.commands.registerCommand('3d-mql.graph.copy', () => vscode.commands.executeCommand('editor.action.clipboardCopyAction')),
     ...graphCommands.map((name) =>
       vscode.commands.registerCommand(`3d-mql.graph.${name}`, () => GraphPanel.postToActive({ type: 'shortcut', name })),
     ),

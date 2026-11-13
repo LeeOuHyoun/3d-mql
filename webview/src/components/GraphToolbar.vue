@@ -13,8 +13,9 @@ import {
   Clock,
   Check,
   DatabaseBackup,
-  ListFilter,
+  FunnelPlus,
   RotateCcw,
+  Copy,
 } from '@lucide/vue'
 import ContextMenu from './ContextMenu.vue'
 
@@ -31,7 +32,7 @@ const isSearchPanelOpen = defineModel('isSearchPanelOpen', { type: Boolean, defa
 const isRelationPanelOpen = defineModel('isRelationPanelOpen', { type: Boolean, default: false })
 const isDetailPanelOpen = defineModel('isDetailPanelOpen', { type: Boolean, default: true })
 const graphFilter = defineModel('graphFilter', { type: String, default: '' })
-const emit = defineEmits(['search', 'refresh', 'clear', 'back', 'forward', 'go'])
+const emit = defineEmits(['search', 'copySearch', 'refresh', 'clear', 'back', 'forward', 'go'])
 
 const historyMenu = shallowRef(null)
 const historyItems = computed(() =>
@@ -94,6 +95,8 @@ const clearWhere = () => {
   props.form.where = ''
   whereInput.value?.focus()
 }
+
+const hasSearch = computed(() => Object.values(props.form).some((value) => value?.replaceAll('*', '').trim()))
 
 const hasInput = computed(() => Object.values(props.form).some((value) => value?.trim()) || !!graphFilter.value)
 
@@ -170,7 +173,7 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
           :title="whereTitle"
           @click="isWhereOpen = !isWhereOpen"
         >
-          <ListFilter :size="16" />
+          <FunnelPlus :size="16" />
           <span v-if="hasWhere" class="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-500" />
         </button>
         <div
@@ -202,13 +205,13 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         </div>
       </div>
       <button
-        type="submit"
-        :disabled="props.isSearching"
-        class="h-7 px-3 flex items-center gap-1.5 rounded-md border-none bg-[#61afef] hover:bg-[#4b8bca] text-white text-xs font-semibold cursor-pointer disabled:opacity-60 transition-colors"
+        type="button"
+        :class="[iconBtnClass, 'disabled:opacity-30 disabled:cursor-default']"
+        :disabled="!hasSearch"
+        title="검색 MQL 문 복사 (Type · Name · Rev · Where)"
+        @click="emit('copySearch')"
       >
-        <Loader2 v-if="props.isSearching" :size="14" class="animate-spin" />
-        <Search v-else :size="14" />
-        검색
+        <Copy :size="15" />
       </button>
       <button
         type="button"
@@ -218,6 +221,15 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         @click="resetInputs"
       >
         <RotateCcw :size="16" />
+      </button>
+      <button
+        type="submit"
+        :disabled="props.isSearching"
+        class="h-7 px-3 flex items-center gap-1.5 rounded-md border-none bg-[#61afef] hover:bg-[#4b8bca] text-white text-xs font-semibold cursor-pointer disabled:opacity-60 transition-colors"
+      >
+        <Loader2 v-if="props.isSearching" :size="14" class="animate-spin" />
+        <Search v-else :size="14" />
+        검색
       </button>
     </form>
     <Loader2 v-if="props.isLoading" :size="16" class="animate-spin text-[#e5c07b]" />
