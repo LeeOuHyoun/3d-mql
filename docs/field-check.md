@@ -9,6 +9,12 @@
 
 ---
 
+## 0.0.43 이후 변경 (새 객체 만들기 기본 Vault)
+
+접속 정보의 vault 가 `ADMINISTRATION`(스키마 전용) 이면 새 객체 만들기의 Vault 기본값이 그대로 들어가 "Can't add object to ADMINISTRATION vault" 로 실패했습니다. 이때는 enovia-mql 과 같이 `eService Production` 을 기본값으로 넣습니다.
+- [ ] ⚠️ ADMINISTRATION vault 로 접속한 상태에서 새 객체 만들기를 열면 Vault 칸에 `eService Production` 이 들어 있고, 바구니에 담아 실행하면 객체가 만들어진다
+- [ ] 다른 vault 로 접속했을 때는 예전처럼 그 vault 가 기본값으로 들어간다. 바구니의 생성 문장 고치기를 열면 담을 때 넣은 Vault 가 그대로 보인다
+
 ## 0.0.42 이후 변경 (오류가 나도 세션 유지)
 
 파이프로 띄운 mql 은 첫 오류에서 스스로 끝나, 콘솔이나 바구니에서 오류가 날 때마다 세션이 끝나고 새로 연결하느라 몇 초씩 걸렸습니다 (진행 중이던 트랜잭션도 사라짐). 이제 mql 을 `mql -k`(Do not abort on error) 로 띄웁니다. 가짜 mql 로만 확인했습니다.

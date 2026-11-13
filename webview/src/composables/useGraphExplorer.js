@@ -846,13 +846,18 @@ export function useGraphExplorer() {
 
   const createDialog = shallowRef(null)
 
+  const defaultVault = () => {
+    const { vault } = context.value
+    return vault.toUpperCase() === 'ADMINISTRATION' ? 'eService Production' : vault
+  }
+
   const openCreate = (anchor = null, key = null) => {
     createDialog.value = {
       ...relationOptions(),
       anchor,
       key,
       draft: key ? basket.createOf(pendingId(key))?.params.object : null,
-      defaults: { vault: context.value.vault, owner: context.value.user },
+      defaults: { vault: defaultVault(), owner: context.value.user },
     }
   }
 
