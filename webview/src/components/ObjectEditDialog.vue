@@ -19,7 +19,8 @@ const shownBasics = ['type', 'policy', 'vault', 'current', 'organization', 'proj
 const isStaged = !!props.target.key
 
 const loadTarget = async () => {
-  const { basics, attributes } = await request(isConnection ? 'connection' : 'object', { id: props.target.id })
+  const { basics, attributes } =
+    props.target.detail ?? (await request(isConnection ? 'connection' : 'object', { id: props.target.id }))
   const metas = await cachedRequest('attributes', { names: attributes.map((field) => field.key) }).catch(() => [])
   return {
     basics: Object.fromEntries(basics.map((field) => [field.key, field.value])),

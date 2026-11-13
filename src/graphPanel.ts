@@ -7,6 +7,7 @@ import {
   buildQueryText,
   countConnections,
   expandObject,
+  forgetAttributes,
   forgetSymbolics,
   hasDelete,
   hasUnbalancedQuote,
@@ -228,6 +229,7 @@ export class GraphPanel {
       return { output: '', error: '따옴표 짝이 맞지 않아 실행하지 않았습니다. 짝이 맞지 않은 따옴표는 뒤따르는 명령까지 문자열로 묶어 세션을 멈추게 합니다.' };
     }
     if (/\bproperty\b/i.test(command)) forgetSymbolics(this.client);
+    if (/\battribute\b/i.test(command)) forgetAttributes(this.client);
     try {
       const output = await this.client.run(command, (text) => this.post({ type: 'chunk', id: requestId, text }));
       this.txActive = transactionAfter(command, this.txActive);

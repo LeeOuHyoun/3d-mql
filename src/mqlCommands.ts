@@ -646,16 +646,54 @@ const rangeChoices = (value: string) => {
   return !value || rangeOperatorPattern.test(value) ? [] : [value];
 };
 
+const attributeCache = new WeakMap<MqlClient, Map<string, AttributeInfo>>();
+
+const toAttributeInfo = (name: string, result: string): AttributeInfo => ({
+  name,
+  type: selectValues(result, 'type')[0] ?? '',
+  default: selectValues(result, 'default')[0] ?? '',
+  ranges: selectValues(result, 'range').flatMap(rangeChoices),
+});
+
+function attributeBlocks(text: string) {
+  const blocks = new Map<string, string[]>();
+  let lines: string[] | undefined;
+  text.split(/\r?\n/).forEach((line) => {
+    const header = /^attribute\s+(.+?)\s*$/.exec(line);
+    if (header) blocks.set(header[1], (lines = []));
+    else lines?.push(line);
+  });
+  return new Map([...blocks].map(([name, body]) => [name, body.join('\n')]));
+}
+
+async function listAttributes(client: MqlClient, names: string[]) {
+  const batchable = names.filter((name) => /^[^,*?"]+$/.test(name));
+  if (batchable.length < 2) return new Map<string, string>();
+  const text = await client.run(`list attribute ${quote(batchable.join(','))} select type default range`).catch(() => '');
+  return attributeBlocks(text);
+}
+
 export async function attributeInfo(client: MqlClient, names: string[]): Promise<AttributeInfo[]> {
-  const results = await Promise.all(
-    names.map((name) => runOptional(client, `print attribute ${quote(name)} select type default range`)),
+  const cache = attributeCache.get(client) ?? new Map<string, AttributeInfo>();
+  attributeCache.set(client, cache);
+  const missing = [...new Set(names.filter((name) => !cache.has(name)))];
+  const listed = await listAttributes(client, missing);
+  listed.forEach((text, name) => {
+    if (missing.includes(name) && selectValues(text, 'type').length) cache.set(name, toAttributeInfo(name, text));
+  });
+  await Promise.all(
+    missing
+      .filter((name) => !cache.has(name))
+      .map(async (name) => {
+        const result = await runOptional(client, `print attribute ${quote(name)} select type default range`);
+        if (!(result instanceof Error)) cache.set(name, toAttributeInfo(name, result));
+      }),
   );
-  return names.map((name, index) => ({
-    name,
-    type: selectValues(results[index], 'type')[0] ?? '',
-    default: selectValues(results[index], 'default')[0] ?? '',
-    ranges: selectValues(results[index], 'range').flatMap(rangeChoices),
-  }));
+  return names.map((name) => cache.get(name) ?? toAttributeInfo(name, ''));
+}
+
+export function forgetAttributes(client: MqlClient) {
+  attributeCache.delete(client);
 }
 
 export async function typeInfo(client: MqlClient, name: string) {

@@ -801,6 +801,7 @@ export function useGraphExplorer() {
       focus,
       staged: staged?.params.fields ?? [],
       key: staged?.key,
+      detail: detailCache.get(`${item.isEdge ? 'connection' : 'object'}:${id}`),
     }
   }
 
