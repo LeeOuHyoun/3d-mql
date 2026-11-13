@@ -4,6 +4,10 @@ import { opensAsGrid } from '@/console/mqlResult.js'
 
 const HISTORY_LIMIT = 100
 const STREAM_FLUSH_MS = 100
+const SAVED_OUTPUT_LIMIT = 100000
+const SAVED_TOTAL_LIMIT = 2000000
+const SAVE_DELAY_MS = 500
+const TRIMMED_NOTE = '\n… (저장 용량 때문에 결과 앞부분만 복원했습니다)'
 const passwordPattern = /\bpassword\s+\S/i
 const readPattern = /^(print|list|temp|expand|query|help|version|eval)\b/i
 
@@ -15,12 +19,50 @@ export const hasWriteStatement = (command) =>
 
 const isOpen = useStorage('3d-mql-console-open', false)
 const input = ref('')
-const entries = ref([])
 const pending = ref(0)
 const isRunning = computed(() => pending.value > 0)
 const runCount = ref(0)
 const writeCount = ref(0)
 let seq = 0
+
+const savedEntries = useStorage('3d-mql-console-entries', [])
+
+const restoreEntry = (saved) =>
+  reactive({
+    id: ++seq,
+    command: saved.command,
+    output: saved.output,
+    error: saved.error,
+    isFailed: !!saved.error,
+    isRunning: false,
+    elapsed: saved.elapsed,
+    isGrid: saved.isGrid,
+    isFolded: saved.isFolded,
+  })
+
+const entries = ref(savedEntries.value.filter((saved) => !passwordPattern.test(saved.command)).map(restoreEntry))
+
+const trimOutput = (output) => {
+  if (output.length <= SAVED_OUTPUT_LIMIT) return output
+  const cut = output.lastIndexOf('\n', SAVED_OUTPUT_LIMIT)
+  return `${output.slice(0, cut > 0 ? cut : SAVED_OUTPUT_LIMIT)}${TRIMMED_NOTE}`
+}
+
+const saveEntries = () => {
+  const kept = []
+  let total = 0
+  for (const entry of [...entries.value].reverse()) {
+    if (entry.isRunning || passwordPattern.test(entry.command)) continue
+    const output = trimOutput(entry.output)
+    total += output.length + entry.command.length
+    if (total > SAVED_TOTAL_LIMIT) break
+    const isGrid = entry.isGrid && output === entry.output
+    kept.unshift({ command: entry.command, output, error: entry.error, elapsed: entry.elapsed, isGrid, isFolded: entry.isFolded })
+  }
+  savedEntries.value = kept
+}
+
+watchDebounced(entries, saveEntries, { debounce: SAVE_DELAY_MS, deep: true })
 
 const history = useStorage('3d-mql-console-history', [])
 history.value = history.value.filter((item) => !passwordPattern.test(item.text))
