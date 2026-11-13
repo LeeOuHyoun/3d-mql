@@ -1,5 +1,5 @@
 <script setup>
-import { Loader2, TriangleAlert } from '@lucide/vue'
+import { Check, Copy, Loader2, TriangleAlert } from '@lucide/vue'
 import { cachedRequest, request } from '@/api.js'
 import { useLoader } from '../composables/useLoader.js'
 import { toFields, useChangePreview } from '../composables/useChangePreview.js'
@@ -148,6 +148,8 @@ const { statements, error: previewError } = useChangePreview(() => [
   { kind: 'create', object: objectSpec.value },
   ...(linkParams.value ? [linkParams.value] : []),
 ])
+const statementText = computed(() => statements.value.join('\n'))
+const { copy, copied } = useClipboard({ legacy: true })
 
 const warnings = computed(() =>
   [
@@ -247,7 +249,18 @@ const codeClass =
       </div>
       <div class="px-4 py-3 border-t border-gray-200 dark:border-[#3e4451] flex flex-col gap-2 shrink-0">
         <template v-if="isComplete">
-          <pre v-if="statements.length" :class="codeClass">{{ statements.join('\n') }}</pre>
+          <div v-if="statements.length" class="relative">
+            <pre :class="[codeClass, 'pr-7']">{{ statementText }}</pre>
+            <button
+              type="button"
+              title="MQL 문 복사"
+              class="absolute top-0 right-0 p-1 flex items-center border-none bg-transparent rounded text-gray-400 hover:text-[#61afef] hover:bg-gray-100 dark:hover:bg-white/10 cursor-pointer"
+              @click="copy(statementText)"
+            >
+              <Check v-if="copied" :size="13" class="text-green-500" />
+              <Copy v-else :size="13" />
+            </button>
+          </div>
           <div v-if="previewError" class="text-red-500 whitespace-pre-wrap break-all">{{ previewError }}</div>
         </template>
         <div v-else class="text-gray-400">

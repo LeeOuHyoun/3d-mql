@@ -2,7 +2,7 @@
   "name": "3d-mql",
   "displayName": "3D MQL Graph",
   "description": "ENOVIA MQL로 객체와 관계를 그래프로 탐색합니다.",
-  "version": "0.0.42",
+  "version": "0.0.43",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -88,7 +88,7 @@
       "webview/context": [
         {
           "command": "3d-mql.graph.copy",
-          "when": "webviewId == '3d-mql.graph' && webviewSection == 'consoleLog'",
+          "when": "webviewId == '3d-mql.graph' && webviewSection == 'readonly'",
           "group": "9_cutcopypaste"
         }
       ],

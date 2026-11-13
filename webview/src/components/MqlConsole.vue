@@ -257,7 +257,6 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
     <div class="flex-1 min-h-0 flex">
       <div
         ref="logRef"
-        data-vscode-context='{"webviewSection":"consoleLog","preventDefaultContextMenuItems":true}'
         class="flex-1 min-w-0 overflow-auto px-3 py-2 font-mono text-[11px] flex flex-col gap-2"
       >
         <div v-if="!entries.length" class="text-gray-400 italic font-sans">

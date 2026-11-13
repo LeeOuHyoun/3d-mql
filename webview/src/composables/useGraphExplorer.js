@@ -773,6 +773,8 @@ export function useGraphExplorer() {
 
   const stageChange = guarded(async (params) => basket.stageChange(params, await metaOf(params)))
 
+  const applyNow = guarded(async (params) => basket.applyNow(params, await metaOf(params)))
+
   const restorableAttributes = async (attributes) => {
     const metas = await cachedRequest('attributes', { names: attributes.map((field) => field.key) }).catch(() => [])
     return attributes.filter((field, index) => field.value || metas[index]?.default)
@@ -798,9 +800,10 @@ export function useGraphExplorer() {
 
   const connectDialog = shallowRef(null)
 
-  const submitConnect = (params) => {
+  const submitConnect = (params, isImmediate) => {
     connectDialog.value = null
-    stageChange({ kind: 'connect', ...params })
+    const action = isImmediate ? applyNow : stageChange
+    action({ kind: 'connect', ...params })
   }
 
   const editTarget = shallowRef(null)

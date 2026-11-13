@@ -121,7 +121,7 @@ const {
   removePending,
 } = useGraphExplorer()
 
-const { changes, isBasketOpen, transaction, finishTransaction } = basket
+const { changes, isBasketOpen, isApplying, transaction, finishTransaction } = basket
 
 const isMinimapOpen = useStorage('3d-mql-minimap-open', true)
 const graphPane = ref(null)
@@ -532,6 +532,7 @@ const contextMenuItems = computed(() => {
         :items="connectDialog.items"
         :edges="connectDialog.edges"
         :relations="connectDialog.relations"
+        :isBusy="isApplying || !!transaction"
         @submit="submitConnect"
         @close="connectDialog = null"
       />
