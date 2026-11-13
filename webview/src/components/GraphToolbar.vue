@@ -14,6 +14,7 @@ import {
   Check,
   DatabaseBackup,
   ListFilter,
+  RotateCcw,
 } from '@lucide/vue'
 import ContextMenu from './ContextMenu.vue'
 
@@ -92,6 +93,14 @@ const submitWhere = () => {
 const clearWhere = () => {
   props.form.where = ''
   whereInput.value?.focus()
+}
+
+const hasInput = computed(() => Object.values(props.form).some((value) => value?.trim()) || !!graphFilter.value)
+
+const resetInputs = () => {
+  Object.keys(props.form).forEach((key) => (props.form[key] = ''))
+  graphFilter.value = ''
+  isWhereOpen.value = false
 }
 const inputClass =
   'h-7 px-2 text-xs rounded-md border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#21252b] text-gray-800 dark:text-[#abb2bf] outline-none focus:border-[#61afef] placeholder:text-gray-400 dark:placeholder:text-[#5c6370]'
@@ -200,6 +209,15 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         <Loader2 v-if="props.isSearching" :size="14" class="animate-spin" />
         <Search v-else :size="14" />
         검색
+      </button>
+      <button
+        type="button"
+        :class="[iconBtnClass, 'disabled:opacity-30 disabled:cursor-default']"
+        :disabled="!hasInput"
+        title="검색 조건 · 그래프 필터 초기화"
+        @click="resetInputs"
+      >
+        <RotateCcw :size="16" />
       </button>
     </form>
     <Loader2 v-if="props.isLoading" :size="16" class="animate-spin text-[#e5c07b]" />

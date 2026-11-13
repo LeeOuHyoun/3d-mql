@@ -12,6 +12,7 @@ const DETAIL_CACHE_SIZE = 300
 const ADD_LIMIT = 50
 const LARGE_GRAPH_NODES = 2000
 const STALE = Symbol('stale')
+const AUTO_REFRESH_DELAY_MS = 1000
 const diffKinds = [
   { key: 'added', label: '추가' },
   { key: 'removed', label: '삭제' },
@@ -678,19 +679,28 @@ export function useGraphExplorer() {
 
   const { run: runInConsole, writeCount } = useMqlConsole()
 
+  const refreshWhenIdle = async () => {
+    await until(isLoading).toBe(false)
+    await refresh()
+  }
+
+  const refreshSoon = debounce(refreshWhenIdle, AUTO_REFRESH_DELAY_MS)
+
   watch(writeCount, () => {
     isStale.value = true
     detailCache.clear()
     clearRequestCache()
+    if (!basket.isApplying.value) refreshSoon()
   })
 
   const onApplied = async (createdIds = [], connected = []) => {
+    refreshSoon.cancel()
     const fresh = createdIds.filter((id) => !rawNodes[id])
     if (fresh.length) await addObjects(fresh)
     connected
       .filter(({ from, to }) => rawNodes[from] && rawNodes[to])
       .forEach(({ from, to, relType }) => recordExploration({ kind: 'connect', from, to, relType }))
-    await refresh()
+    await refreshWhenIdle()
   }
 
   const basket = useChangeBasket(connection, onApplied, () => ({
@@ -1084,7 +1094,10 @@ export function useGraphExplorer() {
     cyRef.value?.on('layoutstop dragfree viewport', persist)
     restore()
   })
-  onBeforeUnmount(destroyCy)
+  onBeforeUnmount(() => {
+    refreshSoon.cancel()
+    destroyCy()
+  })
 
   return {
     isDark,
