@@ -24,6 +24,7 @@ import { useMqlConsole } from '../composables/useMqlConsole.js'
 import { useConsoleAssist } from '../composables/useConsoleAssist.js'
 import { usePanelResize } from '../composables/usePanelResize.js'
 import { buildFindRegex } from '../console/mqlResult.js'
+import { HIGHLIGHT_MAX_CHARS, highlightParts } from '../console/mqlHighlight.js'
 import ConsoleAssist from './ConsoleAssist.vue'
 import ConsoleEntry from './ConsoleEntry.vue'
 import ConsoleHistory from './ConsoleHistory.vue'
@@ -56,6 +57,27 @@ const {
   onFocus: onInputFocus,
   onBlur: onInputBlur,
 } = useConsoleAssist(inputRef)
+
+const overlayRef = ref(null)
+const inputParts = computed(() =>
+  input.value.length > HIGHLIGHT_MAX_CHARS ? null : highlightParts(`${input.value}\n`),
+)
+
+const placeOverlay = () => {
+  const el = inputRef.value
+  const overlay = overlayRef.value
+  if (!el || !overlay) return
+  Object.assign(overlay.style, {
+    left: `${el.offsetLeft + el.clientLeft}px`,
+    top: `${el.offsetTop + el.clientTop}px`,
+    width: `${el.clientWidth}px`,
+    height: `${el.clientHeight}px`,
+  })
+  overlay.scrollTop = el.scrollTop
+}
+
+useResizeObserver(inputRef, placeOverlay)
+watch(inputParts, () => nextTick(placeOverlay))
 
 const runInput = () => {
   closeAssist()
@@ -270,12 +292,24 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         class="absolute -top-0.5 left-0 right-0 h-1 z-10 cursor-row-resize hover:bg-[#61afef]/40"
         @pointerdown.prevent="onInputResizeStart"
       ></div>
+      <pre
+        v-if="inputParts"
+        ref="overlayRef"
+        aria-hidden="true"
+        class="absolute z-[1] m-0 px-2 py-1 overflow-hidden whitespace-pre-wrap break-words pointer-events-none font-mono text-xs text-gray-800 dark:text-[#abb2bf]"
+      ><span v-for="(part, index) in inputParts" :key="index" :class="part.cls">{{ part.text }}</span></pre>
       <textarea
         ref="inputRef"
         v-model="input"
         spellcheck="false"
         placeholder="MQL 명령 입력 (Ctrl+Enter 실행 · Ctrl+Space 제안 · Ctrl+Shift+F 포매팅 · Ctrl+↑/↓ 이전 명령)"
-        class="flex-1 self-stretch px-2 py-1 font-mono text-xs rounded-md border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#282c34] text-gray-800 dark:text-[#abb2bf] outline-none focus:border-[#61afef] resize-none"
+        class="flex-1 self-stretch px-2 py-1 font-mono text-xs rounded-md border border-gray-200 dark:border-[#3e4451] bg-white dark:bg-[#282c34] placeholder:text-gray-400 dark:placeholder:text-[#5c6370] outline-none focus:border-[#61afef] resize-none"
+        :class="
+          inputParts
+            ? 'text-transparent caret-gray-800 dark:caret-[#abb2bf] selection:text-transparent selection:bg-[#61afef]/30'
+            : 'text-gray-800 dark:text-[#abb2bf]'
+        "
+        @scroll="placeOverlay"
         @keydown="onInputKeydown"
         @keydown.ctrl.enter.prevent="runInput"
         @keydown.ctrl.up.prevent="recall(1)"

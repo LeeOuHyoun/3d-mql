@@ -3,6 +3,7 @@ import { Play, Copy, Check, FileText, ChevronRight, Table2, Highlighter, CircleP
 import { uniq } from 'lodash-es'
 import { useMqlConsole } from '../composables/useMqlConsole.js'
 import { gridOf, gridTsv, OBJECT_ID_PATTERN } from '../console/mqlResult.js'
+import { highlightParts } from '../console/mqlHighlight.js'
 import ConsoleText from './ConsoleText.vue'
 
 const props = defineProps({
@@ -12,6 +13,8 @@ const props = defineProps({
 const emit = defineEmits(['objectId', 'highlight', 'add'])
 
 const objectIds = computed(() => uniq(props.entry.output.match(OBJECT_ID_PATTERN) ?? []))
+
+const commandParts = computed(() => highlightParts(props.entry.command))
 
 const { run, openInEditor } = useMqlConsole()
 
@@ -49,7 +52,9 @@ const cellClass = 'px-2 py-0.5 border border-gray-200 dark:border-[#3e4451] text
         <ChevronRight :size="14" class="transition-transform" :class="!props.entry.isFolded && 'rotate-90'" />
       </button>
       <span class="text-[#61afef] shrink-0">MQL&gt;</span>
-      <span class="flex-1 min-w-0 whitespace-pre-wrap break-all text-gray-800 dark:text-[#abb2bf]">{{ props.entry.command }}</span>
+      <span class="flex-1 min-w-0 whitespace-pre-wrap break-all text-gray-800 dark:text-[#abb2bf]"
+        ><span v-for="(part, index) in commandParts" :key="index" :class="part.cls">{{ part.text }}</span></span
+      >
       <span v-if="props.entry.error" class="shrink-0 flex text-red-500" title="실패">
         <CircleAlert :size="12" />
       </span>

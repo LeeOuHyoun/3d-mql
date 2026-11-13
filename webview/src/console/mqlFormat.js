@@ -50,7 +50,7 @@ export const MQL_STARTERS = new Set([
   'del',
 ])
 
-const HEADER_TARGETS = new Set([
+export const HEADER_TARGETS = new Set([
   'bus',
   'businessobject',
   'connection',
@@ -136,15 +136,15 @@ const REL_SUBS = new Set(['cardinality', 'revision', 'clone', 'propagate', 'mean
 
 const FIELD_SUBS = new Set(['name', 'label', 'businessobject', 'relationship', 'range', 'href', 'alt', 'sorttype', 'update'])
 
-const DDL_WORDS = new Set([...L1_BREAKS, ...STATE_SUBS, ...REL_SUBS, ...FIELD_SUBS, 'add', 'remove'])
+export const DDL_WORDS = new Set([...L1_BREAKS, ...STATE_SUBS, ...REL_SUBS, ...FIELD_SUBS, 'add', 'remove'])
 const DDL_VERBS = new Set(['add', 'modify', 'mod'])
 const EDIT_WORDS = new Set(['add', 'remove', 'modify', 'mod'])
 const BUS_TARGETS = new Set(['bus', 'businessobject'])
 const BUS_VERBS = new Set(['print', 'expand', 'modify', 'mod', 'add', 'delete', 'del', 'promote', 'demote', 'connect', 'disconnect'])
 const ADMIN_VERBS = new Set(['print', 'list', 'modify', 'mod', 'add', 'delete', 'del'])
-const BUS_BREAKS = new Set(['description', 'policy', 'vault', 'owner', 'current', 'state'])
-const EXPAND_BREAKS = new Set(['from', 'to', 'relationship', 'rel', 'type', 'recurse', 'terse'])
-const QUERY_CLAUSES = new Set(['where', 'select', 'orderby', 'limit', 'dump', 'recordsep', 'tcl', 'output'])
+export const BUS_BREAKS = new Set(['description', 'policy', 'vault', 'owner', 'current', 'state'])
+export const EXPAND_BREAKS = new Set(['from', 'to', 'relationship', 'rel', 'type', 'recurse', 'terse'])
+export const QUERY_CLAUSES = new Set(['where', 'select', 'orderby', 'limit', 'dump', 'recordsep', 'tcl', 'output'])
 const VALUE_HOLDERS = new Set(['orderby', 'limit', 'dump', 'recordsep', 'recurse'])
 const SELECT_ENDS = new Set(['where', 'dump', 'recordsep', 'tcl', 'output', 'orderby', 'limit'])
 const SECTION_WORDS = new Set(['state', 'allstate', 'from', 'to', 'field', 'column'])

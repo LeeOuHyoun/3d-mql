@@ -113,8 +113,8 @@ const CLAUSE_HEADS = new Set([
 
 const SCHEMA_KINDS =
   'type|policy|attribute|relationship|person|program|vault|role|group|association|command|menu|form|table|channel|portal|page'
-const PLACEHOLDER = /(?<!\$)<[A-Za-z_][\w|,.]*>/g
-const TEMPLATE_HOLES = new Set([...DDL_TEMPLATES.values()].flatMap((text) => text.match(PLACEHOLDER)))
+export const PLACEHOLDER = /(?<!\$)<[A-Za-z_][\w|,.]*>/g
+export const TEMPLATE_HOLES = new Set([...DDL_TEMPLATES.values()].flatMap((text) => text.match(PLACEHOLDER)))
 const MATCH_LIMIT = 40
 const attributePattern = /^(.*?\battribute\[)([^\]]*)$/i
 const commandPattern = new RegExp(`^\\s*(print|mod|modify|del|delete|list)\\s+(${SCHEMA_KINDS})(?:\\s+([^\\s;]*))?$`, 'i')
