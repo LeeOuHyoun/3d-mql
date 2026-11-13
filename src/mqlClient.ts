@@ -35,7 +35,7 @@ const errorLinePattern =
   /^\s*(?:(?:System\s+|MQL\s+|Connect\s+|Syntax\s+|Parse\s+|Database\s+|Severe\s+|Fatal\s+)?Error(?:\s*:|\s+#\d+)|#\d{4,}\s*:)/i;
 const passwordPromptPattern = /^\s*(?:Enter\s+)?Password\s*:\s*$/i;
 const quotedPattern = /"[^"]*"|'[^']*'/g;
-const contextPattern = /(^|;)\s*(set|push|pop)\b|\bcont/i;
+const contextPattern = /(?:^|[;\n])\s*(?:set|push|pop)\b|\bcont(?:ext)?\b/i;
 const contextStatementPattern = /(?:^|;)\s*(?:set|push|pop)\s+context\b/i;
 const setContextPattern = /(?:^|;)\s*(set\s+context\b[^;]*)/gi;
 const pipes = ['out', 'err'] as const;
