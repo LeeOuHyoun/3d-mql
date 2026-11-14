@@ -21,6 +21,8 @@ import { request } from '../api.js'
 import { useMqlConsole } from '../composables/useMqlConsole.js'
 import { useConsoleAssist } from '../composables/useConsoleAssist.js'
 import { usePanelResize } from '../composables/usePanelResize.js'
+import { useSettings } from '../composables/useSettings.js'
+import { useLineGutter } from '../composables/useLineGutter.js'
 import { buildFindRegex } from '../console/mqlResult.js'
 import { HIGHLIGHT_MAX_CHARS, highlightParts } from '../console/mqlHighlight.js'
 import ConsoleAssist from './ConsoleAssist.vue'
@@ -78,6 +80,22 @@ const placeOverlay = () => {
 useResizeObserver(inputRef, placeOverlay)
 watch(inputParts, () => nextTick(placeOverlay))
 
+const settings = useSettings()
+const isLineNumbersShown = computed(() => settings.value.consoleLineNumbers)
+const {
+  mirrorRef,
+  gutterRef,
+  mirrorWidth,
+  lines: gutterLines,
+  heights: gutterHeights,
+  syncScroll: syncGutterScroll,
+} = useLineGutter(inputRef, input, isLineNumbersShown)
+
+const onInputScroll = () => {
+  placeOverlay()
+  syncGutterScroll()
+}
+
 const runInput = () => {
   closeAssist()
   if (isRunning.value) return
@@ -85,9 +103,30 @@ const runInput = () => {
   if (statement) run(statement, { fill: false })
 }
 
+const FOLLOW_SLACK_PX = 24
+const isFollowing = ref(true)
+
+const scrollToEnd = () => nextTick(() => logRef.value && (logRef.value.scrollTop = logRef.value.scrollHeight))
+
+const onLogScroll = () => {
+  const el = logRef.value
+  isFollowing.value = el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_SLACK_PX
+}
+
 watch(
   () => entries.value.at(-1)?.id,
-  () => nextTick(() => logRef.value && (logRef.value.scrollTop = logRef.value.scrollHeight)),
+  () => {
+    isFollowing.value = true
+    scrollToEnd()
+  },
+)
+
+watch(
+  () => {
+    const last = entries.value.at(-1)
+    return last ? `${last.output.length}:${last.error?.length ?? 0}:${last.elapsed ?? ''}` : ''
+  },
+  () => isFollowing.value && scrollToEnd(),
 )
 
 const isHistoryOpen = useStorage('3d-mql-console-history-open', false)
@@ -257,9 +296,10 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
     <div class="flex-1 min-h-0 flex">
       <div
         ref="logRef"
-        class="flex-1 min-w-0 overflow-auto px-3 py-2 font-mono text-[11px] flex flex-col gap-2"
+        class="flex-1 min-w-0 overflow-auto px-3 pb-2 font-mono text-[11px] flex flex-col gap-2"
+        @scroll="onLogScroll"
       >
-        <div v-if="!entries.length" class="text-gray-400 italic font-sans">
+        <div v-if="!entries.length" class="pt-2 text-gray-400 italic font-sans">
           MQL 명령을 입력하고 Ctrl+Enter로 실행합니다. Ctrl+↑/↓로 이전 명령을 불러오고, 결과의 Object ID를 클릭하면
           그래프에서 열 수 있습니다.
         </div>
@@ -289,6 +329,25 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         aria-hidden="true"
         class="absolute z-[1] m-0 px-2 py-1 overflow-hidden whitespace-pre-wrap break-words pointer-events-none font-mono text-xs text-gray-800 dark:text-[#abb2bf]"
       ><span v-for="(part, index) in inputParts" :key="index" :class="part.cls">{{ part.text }}</span></pre>
+      <template v-if="isLineNumbersShown">
+        <div
+          ref="gutterRef"
+          aria-hidden="true"
+          class="self-stretch -mr-1 py-1 border-y border-transparent overflow-hidden select-none font-mono text-xs text-right text-gray-400 dark:text-[#5c6370] tabular-nums"
+        >
+          <div v-for="(rowHeight, index) in gutterHeights" :key="index" :style="{ height: `${rowHeight}px` }">
+            {{ index + 1 }}
+          </div>
+        </div>
+        <div
+          ref="mirrorRef"
+          aria-hidden="true"
+          class="fixed left-0 top-0 invisible pointer-events-none font-mono text-xs whitespace-pre-wrap break-words"
+          :style="{ width: `${mirrorWidth}px` }"
+        >
+          <div v-for="(line, index) in gutterLines" :key="index">{{ line || '​' }}</div>
+        </div>
+      </template>
       <textarea
         ref="inputRef"
         v-model="input"
@@ -300,7 +359,7 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
             ? 'text-transparent caret-gray-800 dark:caret-[#abb2bf] selection:text-transparent selection:bg-[#61afef]/30'
             : 'text-gray-800 dark:text-[#abb2bf]'
         "
-        @scroll="placeOverlay"
+        @scroll="onInputScroll"
         @keydown="onInputKeydown"
         @keydown.ctrl.enter.prevent="runInput"
         @keydown.ctrl.up.prevent="recall(1)"

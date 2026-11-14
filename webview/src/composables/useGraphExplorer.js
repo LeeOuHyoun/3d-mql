@@ -5,6 +5,7 @@ import { useTheme } from './useTheme.js'
 import { useGraphCytoscape } from './useGraphCytoscape.js'
 import { useRelationFilter } from './useRelationFilter.js'
 import { useMqlConsole } from './useMqlConsole.js'
+import { useCopyFeedback } from './useCopyFeedback.js'
 import { isPending, pendingId, pendingKey, useChangeBasket } from './useChangeBasket.js'
 
 export const objectIdPattern = /^(\d+\.\d+\.\d+\.\d+|[0-9a-f]{32})$/i
@@ -580,7 +581,9 @@ export function useGraphExplorer() {
     }
   }
 
-  const copySearch = guarded(() => request('copySearch', { ...searchForm }))
+  const { copy: copyText, isCopied } = useCopyFeedback()
+  const isSearchCopied = computed(() => isCopied('search'))
+  const copySearch = guarded(async () => copyText(await request('searchText', { ...searchForm }), 'search'))
 
   const addSearchCondition =({ expression, type }) => {
     searchForm.where = [searchForm.where.trim(), expression].filter(Boolean).join(' && ')
@@ -1131,6 +1134,7 @@ export function useGraphExplorer() {
     isSearchPanelOpen,
     onSearch,
     copySearch,
+    isSearchCopied,
     addSearchCondition,
     loadRoot,
     expand,

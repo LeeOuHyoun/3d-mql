@@ -27,6 +27,7 @@ const props = defineProps({
   isStale: { type: Boolean, default: false },
   history: { type: Array, default: () => [] },
   historyIndex: { type: Number, default: -1 },
+  isSearchCopied: { type: Boolean, default: false },
 })
 const isSearchPanelOpen = defineModel('isSearchPanelOpen', { type: Boolean, default: false })
 const isRelationPanelOpen = defineModel('isRelationPanelOpen', { type: Boolean, default: false })
@@ -211,7 +212,8 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         title="검색 MQL 문 복사 (Type · Name · Rev · Where)"
         @click="emit('copySearch')"
       >
-        <Copy :size="15" />
+        <Check v-if="props.isSearchCopied" :size="15" class="text-green-500" />
+        <Copy v-else :size="15" />
       </button>
       <button
         type="button"

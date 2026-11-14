@@ -1,8 +1,9 @@
 <script setup>
-import { Loader2, Crosshair, Copy, FileCode } from '@lucide/vue'
+import { Loader2, Crosshair, Copy, Check, FileCode } from '@lucide/vue'
 import { groupBy } from 'lodash-es'
 import { cachedRequest, request } from '@/api.js'
 import { useLoader } from '../composables/useLoader.js'
+import { useCopyFeedback } from '../composables/useCopyFeedback.js'
 
 const props = defineProps({
   source: { type: Object, required: true },
@@ -36,7 +37,7 @@ const perform = async (method, params) => {
   isPerforming = true
   actionError.value = ''
   try {
-    await request(method, params)
+    return await request(method, params)
   } catch (e) {
     actionError.value = e.message
   } finally {
@@ -46,7 +47,12 @@ const perform = async (method, params) => {
 
 const openJpo = (step) => perform('openJpo', { program: step.program, method: step.method })
 
-const copyAddTrigger = (event) => perform('copy', { action: 'addTrigger', targets: [event] })
+const { copy, isCopied } = useCopyFeedback()
+
+const copyAddTrigger = async (event) => {
+  const text = await perform('query', { action: 'addTrigger', targets: [event] })
+  if (text) copy(text, event)
+}
 
 const sectionClass =
   'sticky top-0 px-4 py-1.5 text-[11px] font-bold tracking-wide text-gray-500 dark:text-[#5c6370] bg-gray-100 dark:bg-[#2c313a]'
@@ -82,7 +88,8 @@ const iconBtnClass = 'p-0.5 flex shrink-0 border-none bg-transparent text-gray-4
             title="기존 input을 포함한 트리거 추가 문장 복사"
             @click="copyAddTrigger(event)"
           >
-            <Copy :size="12" />
+            <Check v-if="isCopied(event)" :size="12" class="text-green-500" />
+            <Copy v-else :size="12" />
           </button>
         </div>
         <div v-if="!event.steps.length" class="font-mono text-[11px] text-gray-500 break-all">

@@ -47,7 +47,7 @@ const cellClass = 'px-2 py-0.5 border border-gray-200 dark:border-[#3e4451] text
 
 <template>
   <div class="group">
-    <div class="flex items-start gap-1">
+    <div class="sticky top-0 z-[2] -mx-3 px-3 pt-1.5 pb-0.5 flex items-start gap-1 bg-gray-50 dark:bg-[#21252b]">
       <button :class="iconBtnClass" class="-ml-1 p-0!" :title="props.entry.isFolded ? '결과 펼치기' : '결과 접기'" @click="toggleFold">
         <ChevronRight :size="14" class="transition-transform" :class="!props.entry.isFolded && 'rotate-90'" />
       </button>

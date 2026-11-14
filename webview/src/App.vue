@@ -70,6 +70,7 @@ const {
   isSearchPanelOpen,
   onSearch,
   copySearch,
+  isSearchCopied,
   addSearchCondition,
   loadRoot,
   expand,
@@ -315,6 +316,7 @@ const contextMenuItems = computed(() => {
       :isStale="isStale"
       :history="rootHistory"
       :historyIndex="historyIndex"
+      :isSearchCopied="isSearchCopied"
       @search="onSearch"
       @copySearch="copySearch"
       @refresh="refresh"

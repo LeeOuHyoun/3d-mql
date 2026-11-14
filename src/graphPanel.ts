@@ -193,7 +193,7 @@ export class GraphPanel {
       const limit = countSetting('searchLimit', 200);
       return searchObjects(this.client, params as SearchParams, limit).then((results) => ({ results, limit }));
     }
-    if (method === 'copySearch') return this.copySearch(params as SearchParams);
+    if (method === 'searchText') return Promise.resolve(this.searchText(params as SearchParams));
     if (method === 'expand') {
       const limit = countSetting('expandLimit', 500);
       return expandObject(this.client, id, params.direction as Direction, params as ExpandOptions, limit);
@@ -267,11 +267,9 @@ export class GraphPanel {
     return text;
   }
 
-  private async copySearch(params: SearchParams) {
+  private searchText(params: SearchParams) {
     const type = params.type?.trim() ?? '';
-    const text = objectIdPattern.test(type) && !params.name?.trim() ? `print bus ${type};` : searchQueryText(params);
-    await this.copy(text);
-    return text;
+    return objectIdPattern.test(type) && !params.name?.trim() ? `print bus ${type};` : searchQueryText(params);
   }
 
   private async copy(text: string) {

@@ -28,7 +28,9 @@ const pieces = computed(() =>
 )
 
 const handleClick = (e, piece) => {
-  if (piece.objectId) emit('objectId', e, piece.objectId)
+  if (!piece.objectId) return
+  e.preventDefault()
+  emit('objectId', e, piece.objectId)
 }
 </script>
 
@@ -40,11 +42,12 @@ const handleClick = (e, piece) => {
       piece.objectId
         ? 'text-[#4b8bca] dark:text-[#61afef] underline decoration-dotted cursor-pointer hover:decoration-solid'
         : toneClasses[piece.tone],
-      piece.isMatch && 'rounded-sm bg-yellow-200 dark:bg-yellow-500/40 data-current:bg-orange-300 dark:data-current:bg-orange-500/70',
+      piece.isMatch && 'scroll-mt-8 rounded-sm bg-yellow-200 dark:bg-yellow-500/40 data-current:bg-orange-300 dark:data-current:bg-orange-500/70',
     ]"
     :title="piece.objectId ? 'Object ID 메뉴 열기' : undefined"
     :data-find-hit="piece.isMatch ? '' : undefined"
     @click="handleClick($event, piece)"
+    @contextmenu="handleClick($event, piece)"
     >{{ piece.text }}</span
   >
 </template>

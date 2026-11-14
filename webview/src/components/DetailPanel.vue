@@ -17,6 +17,7 @@ import {
 } from '@lucide/vue'
 import { cachedRequest, request } from '@/api.js'
 import { usePanelResize } from '../composables/usePanelResize.js'
+import { useCopyFeedback } from '../composables/useCopyFeedback.js'
 import { objectIdPattern } from '../composables/useGraphExplorer.js'
 import ContextMenu from './ContextMenu.vue'
 import DetailStates from './DetailStates.vue'
@@ -49,13 +50,7 @@ const emit = defineEmits([
   'attach',
 ])
 
-const { copy, copied } = useClipboard({ legacy: true })
-const copiedKey = ref('')
-
-const handleCopy = (text, key) => {
-  copy(text)
-  copiedKey.value = key
-}
+const { copy, isCopied } = useCopyFeedback()
 
 const itemId = computed(() => props.item?.originalId || props.item?.id || '')
 const propertyFilter = ref('')
@@ -391,9 +386,9 @@ const actionBtnClass =
               <button
                 class="p-1 flex border-none bg-transparent text-gray-400 hover:text-amber-500 cursor-pointer"
                 title="ID 복사"
-                @click="handleCopy(member.id, `member-${member.id}`)"
+                @click="copy(member.id, `member-${member.id}`)"
               >
-                <Check v-if="copied && copiedKey === `member-${member.id}`" :size="13" class="text-green-500" />
+                <Check v-if="isCopied(`member-${member.id}`)" :size="13" class="text-green-500" />
                 <Copy v-else :size="13" />
               </button>
             </div>
@@ -417,9 +412,9 @@ const actionBtnClass =
           <div v-if="!props.item.virtual" class="flex gap-2">
             <button
               :class="[actionBtnClass, 'border-transparent bg-[#34495e] hover:bg-[#2c3e50] text-white']"
-              @click="handleCopy(itemId, 'id')"
+              @click="copy(itemId, 'id')"
             >
-              <Check v-if="copied && copiedKey === 'id'" :size="14" class="text-green-400" />
+              <Check v-if="isCopied('id')" :size="14" class="text-green-400" />
               <Copy v-else :size="14" />
               Copy ID
             </button>
@@ -530,12 +525,12 @@ const actionBtnClass =
                 <span
                   class="flex-1 min-w-0 break-all whitespace-pre-wrap text-gray-800 dark:text-[#abb2bf] cursor-pointer hover:text-[#61afef]"
                   title="클릭하여 복사 · 우클릭: 값 메뉴"
-                  @click="handleCopy(field.value, `${section.title}-${field.key}-${index}`)"
+                  @click="copy(field.value, `${section.title}-${field.key}-${index}`)"
                   @contextmenu.prevent="openValueMenu($event, section.title, field)"
                 >
                   {{ field.value || '-' }}
                   <Check
-                    v-if="copied && copiedKey === `${section.title}-${field.key}-${index}`"
+                    v-if="isCopied(`${section.title}-${field.key}-${index}`)"
                     :size="12"
                     class="inline text-green-500"
                   />
