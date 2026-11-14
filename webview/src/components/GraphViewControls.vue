@@ -17,11 +17,7 @@ import {
   ArrowDownLeft,
   ArrowDownRight,
   RotateCcw,
-  Settings,
-  Square,
-  SquareCheck,
 } from '@lucide/vue'
-import { settingItems, useSettings } from '../composables/useSettings.js'
 
 const props = defineProps({
   isDark: { type: Boolean, default: false },
@@ -59,16 +55,6 @@ const toggleMinimapMenu = () => {
 const selectMinimapPosition = (value) => {
   if (value === 'reset') emit('resetMinimap')
   else emit('minimapPosition', value)
-}
-
-const settings = useSettings()
-const settingsMenuRef = ref(null)
-const isSettingsMenuOpen = ref(false)
-
-onClickOutside(settingsMenuRef, () => (isSettingsMenuOpen.value = false))
-
-const toggleSetting = (key) => {
-  settings.value[key] = !settings.value[key]
 }
 
 const layouts = [
@@ -133,34 +119,6 @@ const dividerClass = 'w-px h-4 mx-1 shrink-0 bg-gray-200 dark:bg-[#3e4451]'
     <button :class="iconBtnClass" title="단축키 안내 (Ctrl+Shift+L)" @click="emit('shortcuts')">
       <Keyboard :size="14" />
     </button>
-    <div ref="settingsMenuRef" class="relative flex items-center">
-      <button
-        :class="[iconBtnClass, isSettingsMenuOpen && activeClass]"
-        title="설정"
-        @click="isSettingsMenuOpen = !isSettingsMenuOpen"
-      >
-        <Settings :size="14" />
-      </button>
-      <div
-        v-if="isSettingsMenuOpen"
-        class="absolute z-30 w-max py-1 rounded-lg border shadow-xl animate-pop-in text-xs bg-white dark:bg-[#282c34] border-gray-200 dark:border-[#3e4451]"
-        :class="props.isMenuBelow ? 'right-0 top-full mt-1.5' : 'left-0 bottom-full mb-1.5'"
-      >
-        <button
-          v-for="item in settingItems"
-          :key="item.key"
-          class="w-full px-3 py-2 flex items-start gap-2 border-none bg-transparent text-left font-semibold text-gray-700 dark:text-[#abb2bf] hover:bg-gray-100 dark:hover:bg-white/10 cursor-pointer whitespace-nowrap"
-          @click="toggleSetting(item.key)"
-        >
-          <SquareCheck v-if="settings[item.key]" :size="14" class="shrink-0 text-[#61afef]" />
-          <Square v-else :size="14" class="shrink-0 text-gray-400" />
-          <span class="flex flex-col gap-0.5">
-            {{ item.label }}
-            <span v-if="item.hint" class="max-w-64 whitespace-normal font-normal text-[11px] text-gray-400 dark:text-[#5c6370]">{{ item.hint }}</span>
-          </span>
-        </button>
-      </div>
-    </div>
     <button :class="iconBtnClass" :title="props.isDark ? '라이트 모드' : '다크 모드'" @click="emit('toggleTheme')">
       <Sun v-if="props.isDark" :size="14" />
       <Moon v-else :size="14" />

@@ -86,7 +86,7 @@ type Symbolics = { byName: Record<string, string>; bySymbolic: Record<string, st
 const separator = '|~|';
 const idPattern = /^[\w.]+$/;
 const triggerPattern = /(\w+):([\w.$-]+)\(([^)]*)\)/g;
-const symbolicPattern = /^(\S+)\s+on\s+program\s+\S+\s+to\s+(\w+)\s+(.+?)\s*$/;
+const symbolicPattern = /^(\S+)\s+on\s+program\s+(\S+)\s+to\s+(\w+)\s+(.+?)\s*$/;
 const triggerManager = 'emxTriggerManager';
 const triggerType = 'eService Trigger Program Parameters';
 const triggerAttributes = ['eService Program Name', 'eService Method Name', 'eService Sequence Number'];
@@ -803,7 +803,7 @@ const symbolicCache = new WeakMap<MqlClient, Promise<Symbolics>>();
 function parseSymbolics(text: string) {
   const symbolics: Symbolics = { byName: {}, bySymbolic: {} };
   text.split(/\r?\n/).forEach((line) => {
-    const [, symbolic, adminType, rest] = symbolicPattern.exec(line.trim()) ?? [];
+    const [, symbolic, , adminType, rest] = symbolicPattern.exec(line.trim()) ?? [];
     if (!symbolic) return;
     const name = rest.replace(/\s+system$/, '').replace(/^(['"])(.*)\1$/, '$2');
     symbolics.byName[`${adminType} ${name}`] = symbolic;
@@ -821,6 +821,7 @@ function symbolicNames(client: MqlClient) {
 
 export function forgetSymbolics(client: MqlClient) {
   symbolicCache.delete(client);
+  singleSymbolicCache.delete(client);
 }
 
 const bySymbolicOf = (client: MqlClient) =>
@@ -834,7 +835,28 @@ async function actualType(client: MqlClient, value: string) {
   return (await bySymbolicOf(client))[value] ?? value;
 }
 
+const singleSymbolicCache = new WeakMap<MqlClient, Map<string, Promise<string>>>();
+
+const findMappedSymbolic = (text: string) =>
+  text
+    .split(/\r?\n/)
+    .map((line) => symbolicPattern.exec(line.trim()))
+    .find((match) => match?.[2] === mappingProgram)?.[1] ?? '';
+
+function symbolicOf(client: MqlClient, key: string) {
+  const cache = singleSymbolicCache.get(client) ?? new Map<string, Promise<string>>();
+  singleSymbolicCache.set(client, cache);
+  const [, adminType, name] = /^(\w+)\s+(.+)$/.exec(key) ?? [];
+  if (!adminType) return Promise.resolve('');
+  if (!cache.has(key)) {
+    const found = client.run(`list property to ${adminType} ${quote(name)}`).then(findMappedSymbolic);
+    cache.set(key, found);
+    found.catch(() => cache.delete(key));
+  }
+  return cache.get(key)!;
+}
+
 export async function lookupSymbolics(client: MqlClient, names: string[]) {
-  const { byName } = await symbolicNames(client);
-  return Object.fromEntries(names.filter((name) => byName[name]).map((name) => [name, byName[name]]));
+  const symbolics = await Promise.all(names.map((name) => symbolicOf(client, name).catch(() => '')));
+  return Object.fromEntries(names.flatMap((name, index) => (symbolics[index] ? [[name, symbolics[index]]] : [])));
 }

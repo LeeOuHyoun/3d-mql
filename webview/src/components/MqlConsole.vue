@@ -16,12 +16,12 @@ import {
   Regex,
   ChevronsDown,
   CornerRightUp,
+  ListOrdered,
 } from '@lucide/vue'
 import { request } from '../api.js'
 import { useMqlConsole } from '../composables/useMqlConsole.js'
 import { useConsoleAssist } from '../composables/useConsoleAssist.js'
 import { usePanelResize } from '../composables/usePanelResize.js'
-import { useSettings } from '../composables/useSettings.js'
 import { useLineGutter } from '../composables/useLineGutter.js'
 import { buildFindRegex } from '../console/mqlResult.js'
 import { HIGHLIGHT_MAX_CHARS, highlightParts } from '../console/mqlHighlight.js'
@@ -80,8 +80,7 @@ const placeOverlay = () => {
 useResizeObserver(inputRef, placeOverlay)
 watch(inputParts, () => nextTick(placeOverlay))
 
-const settings = useSettings()
-const isLineNumbersShown = computed(() => settings.value.consoleLineNumbers)
+const isLineNumbersShown = useStorage('3d-mql-console-line-numbers', false)
 const {
   mirrorRef,
   gutterRef,
@@ -244,6 +243,13 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
       <div class="flex-1"></div>
       <button :class="[iconBtnClass, isFindOpen && activeClass]" title="결과에서 찾기 (Ctrl+F)" @click="toggleFind">
         <Search :size="14" />
+      </button>
+      <button
+        :class="[iconBtnClass, isLineNumbersShown && activeClass]"
+        title="입력창 줄 번호"
+        @click="isLineNumbersShown = !isLineNumbersShown"
+      >
+        <ListOrdered :size="14" />
       </button>
       <button :class="[iconBtnClass, isHistoryOpen && activeClass]" title="명령 기록" @click="isHistoryOpen = !isHistoryOpen">
         <History :size="14" />

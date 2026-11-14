@@ -18,7 +18,6 @@ import {
 import { cachedRequest, request } from '@/api.js'
 import { usePanelResize } from '../composables/usePanelResize.js'
 import { useCopyFeedback } from '../composables/useCopyFeedback.js'
-import { useSettings } from '../composables/useSettings.js'
 import { objectIdPattern } from '../composables/useGraphExplorer.js'
 import ContextMenu from './ContextMenu.vue'
 import DetailStates from './DetailStates.vue'
@@ -149,19 +148,16 @@ const symbolicKey = (section, field) => {
   return adminTypes.value[field.key] ? `${adminTypes.value[field.key]} ${field.value}` : ''
 }
 
-const settings = useSettings()
+const lookupSymbolics = (names) => cachedRequest('symbolics', { names }).catch(() => null)
 
 watch(
-  [() => props.detail, () => settings.value.detailSymbolics],
-  async ([detail, isShown]) => {
+  () => props.detail,
+  async (detail) => {
     symbolics.value = null
-    if (!detail || !isShown) return
-    const names = [
-      ...detail.basics.map((field) => symbolicKey('Basic', field)),
-      ...detail.attributes.map((field) => symbolicKey('Attributes', field)),
-    ].filter(Boolean)
-    const result = await cachedRequest('symbolics', { names }).catch(() => null)
-    if (detail === props.detail && settings.value.detailSymbolics) symbolics.value = result
+    if (!detail) return
+    const names = detail.basics.map((field) => symbolicKey('Basic', field)).filter(Boolean)
+    const result = await lookupSymbolics(names)
+    if (detail === props.detail) symbolics.value = result
   },
   { immediate: true },
 )
@@ -182,9 +178,13 @@ const valueMenu = shallowRef(null)
 
 watch(itemId, () => (valueMenu.value = null))
 
-const openValueMenu = (e, section, field) => {
+const openValueMenu = async (e, section, field) => {
   const key = symbolicKey(section, field)
-  valueMenu.value = { x: e.clientX, y: e.clientY, section, field, symbolic: (key && symbolics.value?.[key]) || '' }
+  const menu = { x: e.clientX, y: e.clientY, section, field, symbolic: (key && symbolics.value?.[key]) || '' }
+  valueMenu.value = menu
+  if (!key || menu.symbolic) return
+  const symbolic = (await lookupSymbolics([key]))?.[key]
+  if (symbolic && valueMenu.value === menu) valueMenu.value = { ...menu, symbolic }
 }
 
 const valueMenuItems = computed(() => {
