@@ -149,12 +149,15 @@ const dividerClass = 'w-px h-4 mx-1 shrink-0 bg-gray-200 dark:bg-[#3e4451]'
         <button
           v-for="item in settingItems"
           :key="item.key"
-          class="w-full px-3 py-2 flex items-center gap-2 border-none bg-transparent text-left font-semibold text-gray-700 dark:text-[#abb2bf] hover:bg-gray-100 dark:hover:bg-white/10 cursor-pointer whitespace-nowrap"
+          class="w-full px-3 py-2 flex items-start gap-2 border-none bg-transparent text-left font-semibold text-gray-700 dark:text-[#abb2bf] hover:bg-gray-100 dark:hover:bg-white/10 cursor-pointer whitespace-nowrap"
           @click="toggleSetting(item.key)"
         >
-          <SquareCheck v-if="settings[item.key]" :size="14" class="text-[#61afef]" />
-          <Square v-else :size="14" class="text-gray-400" />
-          {{ item.label }}
+          <SquareCheck v-if="settings[item.key]" :size="14" class="shrink-0 text-[#61afef]" />
+          <Square v-else :size="14" class="shrink-0 text-gray-400" />
+          <span class="flex flex-col gap-0.5">
+            {{ item.label }}
+            <span v-if="item.hint" class="max-w-64 whitespace-normal font-normal text-[11px] text-gray-400 dark:text-[#5c6370]">{{ item.hint }}</span>
+          </span>
         </button>
       </div>
     </div>

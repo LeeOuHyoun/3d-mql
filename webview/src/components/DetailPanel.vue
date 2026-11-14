@@ -18,6 +18,7 @@ import {
 import { cachedRequest, request } from '@/api.js'
 import { usePanelResize } from '../composables/usePanelResize.js'
 import { useCopyFeedback } from '../composables/useCopyFeedback.js'
+import { useSettings } from '../composables/useSettings.js'
 import { objectIdPattern } from '../composables/useGraphExplorer.js'
 import ContextMenu from './ContextMenu.vue'
 import DetailStates from './DetailStates.vue'
@@ -148,17 +149,19 @@ const symbolicKey = (section, field) => {
   return adminTypes.value[field.key] ? `${adminTypes.value[field.key]} ${field.value}` : ''
 }
 
+const settings = useSettings()
+
 watch(
-  () => props.detail,
-  async (detail) => {
+  [() => props.detail, () => settings.value.detailSymbolics],
+  async ([detail, isShown]) => {
     symbolics.value = null
-    if (!detail) return
+    if (!detail || !isShown) return
     const names = [
       ...detail.basics.map((field) => symbolicKey('Basic', field)),
       ...detail.attributes.map((field) => symbolicKey('Attributes', field)),
     ].filter(Boolean)
     const result = await cachedRequest('symbolics', { names }).catch(() => null)
-    if (detail === props.detail) symbolics.value = result
+    if (detail === props.detail && settings.value.detailSymbolics) symbolics.value = result
   },
   { immediate: true },
 )

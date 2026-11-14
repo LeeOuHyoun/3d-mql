@@ -2,6 +2,12 @@
 
 실제 MQL 세션과 VS Code 웹뷰에서만 확인할 수 있는 항목만 모았습니다. 확인한 항목은 `[x]` 로 바꾸고, 문제가 있으면 항목 아래 `피드백:` 에 증상을 적어 주세요.
 
+## 0.0.47 (Node Properties 심볼릭 조회 기본 끔)
+
+노드를 선택하면 심볼릭 전체 목록(`list property on program eServiceSchemaVariableMapping.tcl`)을 자동 조회해, 그동안 History · States · Triggers 탭과 콘솔 명령이 줄을 서서 느려지던 문제를 줄였습니다. 이제 설정(톱니바퀴)에서 켠 경우에만 조회합니다.
+- [ ] ⚠️ 노드를 선택한 뒤 History · States · Triggers 탭과 콘솔 명령이 예전보다 빨리 응답한다. 출력 창 `3D MQL` 로그에 `list property on program …` 줄이 찍히지 않는다
+- [ ] 설정 → "Node Properties 심볼릭 이름 표시" 를 켜면 Type · Policy · Vault 아래에 심볼릭 이름이 나오고, 끄면 사라진다
+
 ## 0.0.46 (복사 표시 · MQL Console · 설정 메뉴)
 
 - [ ] ⚠️ 툴바의 검색 MQL 복사 · Triggers 탭의 트리거 추가 문장 복사 아이콘을 누르면 잠깐 체크로 바뀌고, 붙여넣으면 문장이 들어 있다
