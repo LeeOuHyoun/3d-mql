@@ -96,7 +96,7 @@ const dividerClass = 'w-px h-4 mx-1 shrink-0 bg-gray-200 dark:bg-[#3e4451]'
         <component :is="layout.icon" :size="14" />
       </button>
     </div>
-    <button :class="iconBtnClass" title="레이아웃 다시 정렬 · 화면 맞춤 (Alt+R)" @click="emit('resetView')">
+    <button :class="iconBtnClass" title="레이아웃 다시 정렬 · 화면 맞춤 (Shift+Alt+R)" @click="emit('resetView')">
       <RefreshCw :size="14" />
     </button>
     <div ref="minimapMenuRef" class="relative flex items-center">
