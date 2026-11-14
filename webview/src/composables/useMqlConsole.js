@@ -12,17 +12,24 @@ const passwordPattern = /\bpassword\s+\S/i
 const readPattern =
   /^(?:print|list|temp|expand|query|help|version|eval|verb\w*|(?:start|commit)\s+trans\w*|(?:set|push|pop)\s+cont\w*)\b/i
 
-export const hasWriteStatement = (command) =>
+const dataWritePattern = /^\w+\s+(?:bus(?:inessobject)?|connection)\b/i
+
+const writeStatementsOf = (command) =>
   command
     .split(';')
     .map((statement) => statement.trim())
-    .some((statement) => statement && !readPattern.test(statement))
+    .filter((statement) => statement && !readPattern.test(statement))
+
+export const hasWriteStatement = (command) => writeStatementsOf(command).length > 0
+
+const hasSchemaStatement = (command) => writeStatementsOf(command).some((statement) => !dataWritePattern.test(statement))
 
 const isOpen = useStorage('3d-mql-console-open', false)
 const input = ref('')
 const pending = ref(0)
 const isRunning = computed(() => pending.value > 0)
 const writeCount = ref(0)
+const schemaWriteCount = ref(0)
 let seq = 0
 
 const savedEntries = useStorage('3d-mql-console-entries', [])
@@ -138,6 +145,7 @@ const execute = async (text) => {
     entry.isRunning = false
     pending.value--
     if (!entry.error && hasWriteStatement(text)) writeCount.value++
+    if (!entry.error && hasSchemaStatement(text)) schemaWriteCount.value++
   }
   return entry
 }
@@ -166,6 +174,7 @@ export const useMqlConsole = () => ({
   entries,
   isRunning,
   writeCount,
+  schemaWriteCount,
   run,
   clear,
   openInEditor,

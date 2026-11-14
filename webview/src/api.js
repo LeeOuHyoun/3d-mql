@@ -47,7 +47,9 @@ export const cachedRequest = (method, params = {}) => {
   return cache.get(key)
 }
 
-export const clearRequestCache = () => cache.clear()
+export const clearRequestCache = (isTarget = () => true) => {
+  for (const key of [...cache.keys()]) if (isTarget(key.slice(0, key.indexOf(':')))) cache.delete(key)
+}
 
 export const onMessage = (listener) => {
   listeners.add(listener)

@@ -1,4 +1,4 @@
-import { countBy, debounce, isEqual, partition, pick, uniq, uniqWith } from 'lodash-es'
+import { countBy, debounce, isEqual, partition, pick, sumBy, uniq, uniqWith } from 'lodash-es'
 import { cachedRequest, clearRequestCache, getState, onMessage, post, request, setState } from '@/api.js'
 import { OBJECT_ID_PATTERN } from '@/console/mqlResult.js'
 import { useTheme } from './useTheme.js'
@@ -15,6 +15,10 @@ const ADD_LIMIT = 50
 const LARGE_GRAPH_NODES = 2000
 const STALE = Symbol('stale')
 const AUTO_REFRESH_DELAY_MS = 1000
+const AUTO_REFRESH_MAX_REQUESTS = 10
+const COPIED_MENU_CLOSE_MS = 600
+const schemaMethods = ['list', 'typeInfo', 'policyStates', 'attributes', 'relationship', 'relationshipAttributes', 'typeChain', 'symbolics']
+const clearDataCache = () => clearRequestCache((method) => !schemaMethods.includes(method))
 const diffKinds = [
   { key: 'added', label: '추가' },
   { key: 'removed', label: '삭제' },
@@ -384,42 +388,65 @@ export function useGraphExplorer() {
   const loadedAt = ref(0)
   const isStale = ref(false)
 
+  let isAutoRefreshSkipNoticed = false
+
   const markLoaded = () => {
     loadedAt.value = Date.now()
     isStale.value = false
+    isAutoRefreshSkipNoticed = false
   }
 
-  const loadRoot = exclusive(
-    (id) => `root:${id}`,
-    (id, record = true) =>
-      withLoading(async () => {
-        const epoch = ++graphEpoch
-        errorMsg.value = ''
-        try {
-          const [{ summary }, early] = await Promise.all([
-            requestDetail('object', id),
-            plainIdPattern.test(id) ? request('expand', { id, direction: 'both' }) : null,
-          ])
-          const expansion = early ?? (await request('expand', { id: summary.id, direction: 'both' }))
-          if (epoch !== graphEpoch) return false
-          resetGraph()
-          rootId.value = summary.id
-          rawNodes[summary.id] = toNode(summary)
-          const entry = { kind: 'expand', id: summary.id, direction: 'both', options: null }
-          explorers.expand.apply(entry, expansion, rawGraph())
-          explorations = [entry]
-          markLoaded()
-          lastExpansionMode.value = 'forward'
-          if (record) recordHistory(summary)
-          doSyncGraph({ fit: true })
-          showTruncated(summary.id, expansion)
-          return true
-        } catch (e) {
-          if (epoch === graphEpoch) errorMsg.value = e.message
-          return false
-        }
-      }),
-  )
+  const runLoadRoot = (id, record) =>
+    withLoading(async () => {
+      const epoch = ++graphEpoch
+      errorMsg.value = ''
+      try {
+        const [{ summary }, early] = await Promise.all([
+          requestDetail('object', id),
+          plainIdPattern.test(id) ? request('expand', { id, direction: 'both' }) : null,
+        ])
+        const expansion = early ?? (await request('expand', { id: summary.id, direction: 'both' }))
+        if (epoch !== graphEpoch) return false
+        resetGraph()
+        rootId.value = summary.id
+        rawNodes[summary.id] = toNode(summary)
+        const entry = { kind: 'expand', id: summary.id, direction: 'both', options: null }
+        explorers.expand.apply(entry, expansion, rawGraph())
+        explorations = [entry]
+        markLoaded()
+        lastExpansionMode.value = 'forward'
+        if (record) recordHistory(summary)
+        doSyncGraph({ fit: true })
+        showTruncated(summary.id, expansion)
+        return true
+      } catch (e) {
+        if (epoch === graphEpoch) errorMsg.value = e.message
+        return false
+      }
+    })
+
+  let rootLoad = null
+  let rootNext = null
+
+  const pumpRoot = async () => {
+    while (rootNext) {
+      const { id, record, resolve } = rootNext
+      rootNext = null
+      rootLoad = { id, promise: runLoadRoot(id, record) }
+      resolve(await rootLoad.promise)
+    }
+    rootLoad = null
+  }
+
+  const loadRoot = (id, record = true) => {
+    if (!rootNext && rootLoad?.id === id) return rootLoad.promise
+    rootNext?.resolve(false)
+    if (rootLoad) graphEpoch += 1
+    return new Promise((resolve) => {
+      rootNext = { id, record, resolve }
+      if (!rootLoad) pumpRoot()
+    })
+  }
 
   const describeNode = (n) => `${n.name} ${n.revision} (${n.type})`
 
@@ -463,7 +490,7 @@ export function useGraphExplorer() {
       await withLoading(async () => {
         try {
           detailCache.clear()
-          clearRequestCache()
+          clearDataCache()
           const [{ summary }, results] = await Promise.all([
             requestDetail('object', rootId.value),
             fetchInOrder(snapshot),
@@ -689,7 +716,7 @@ export function useGraphExplorer() {
     if (selectedItem.value) revealElement(selectedItem.value.id)
   }
 
-  const { run: runInConsole, writeCount } = useMqlConsole()
+  const { run: runInConsole, writeCount, schemaWriteCount } = useMqlConsole()
 
   const refreshWhenIdle = async () => {
     await until(isLoading).toBe(false)
@@ -698,12 +725,27 @@ export function useGraphExplorer() {
 
   const refreshSoon = debounce(refreshWhenIdle, AUTO_REFRESH_DELAY_MS)
 
+  const refreshCost = () => sumBy(explorations, (entry) => entry.ids?.length ?? 1)
+
   watch(writeCount, () => {
     isStale.value = true
     detailCache.clear()
-    clearRequestCache()
-    if (!basket.isApplying.value) refreshSoon()
+    clearDataCache()
+    if (basket.isApplying.value) return
+    if (refreshCost() <= AUTO_REFRESH_MAX_REQUESTS) {
+      refreshSoon()
+      return
+    }
+    refreshSoon.cancel()
+    if (isAutoRefreshSkipNoticed) return
+    isAutoRefreshSkipNoticed = true
+    post({
+      type: 'notify',
+      text: '그래프가 커서 쓰기 명령 뒤 자동 새로고침을 건너뛰었습니다. 툴바의 새로고침으로 갱신하세요.',
+    })
   })
+
+  watch(schemaWriteCount, () => clearRequestCache())
 
   const onApplied = async (createdIds = [], connected = []) => {
     refreshSoon.cancel()
@@ -975,8 +1017,16 @@ export function useGraphExplorer() {
     connectDialog.value = { items, ...relationOptions() }
   }
 
+  const isMenuIdCopied = computed(() => isCopied('menuId'))
+
+  const copyMenuId = (menu) => {
+    copyText(targetData(menu.target).id, 'menuId')
+    setTimeout(() => contextMenu.value === menu && hideContextMenu(), COPIED_MENU_CLOSE_MS)
+  }
+
   const onContextAction = (action) => {
     const menu = contextMenu.value
+    if (menu && action === 'copyId') return copyMenuId(menu)
     hideContextMenu()
     if (!menu) return
     const { id } = targetData(menu.target)
@@ -1159,6 +1209,7 @@ export function useGraphExplorer() {
     isDetailLoading,
     isDetailPanelOpen,
     onContextAction,
+    isMenuIdCopied,
     rootItem,
     relationFilterState,
     rootHistory,

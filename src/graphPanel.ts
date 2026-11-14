@@ -190,12 +190,12 @@ export class GraphPanel {
   private async handle(method: string, params: Record<string, unknown>, requestId: number) {
     const id = String(params.id ?? '');
     if (method === 'search') {
-      const limit = countSetting('searchLimit', 200);
+      const limit = countSetting('searchLimit', 100);
       return searchObjects(this.client, params as SearchParams, limit).then((results) => ({ results, limit }));
     }
     if (method === 'searchText') return Promise.resolve(this.searchText(params as SearchParams));
     if (method === 'expand') {
-      const limit = countSetting('expandLimit', 500);
+      const limit = countSetting('expandLimit', 50);
       return expandObject(this.client, id, params.direction as Direction, params as ExpandOptions, limit);
     }
     if (method === 'connectionCount') return countConnections(this.client, id);

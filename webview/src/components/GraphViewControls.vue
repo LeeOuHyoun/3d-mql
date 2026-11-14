@@ -96,7 +96,7 @@ const dividerClass = 'w-px h-4 mx-1 shrink-0 bg-gray-200 dark:bg-[#3e4451]'
         <component :is="layout.icon" :size="14" />
       </button>
     </div>
-    <button :class="iconBtnClass" title="레이아웃 다시 정렬 · 화면 맞춤 (Shift+Alt+F)" @click="emit('resetView')">
+    <button :class="iconBtnClass" title="레이아웃 다시 정렬 · 화면 맞춤 (Alt+R)" @click="emit('resetView')">
       <RefreshCw :size="14" />
     </button>
     <div ref="minimapMenuRef" class="relative flex items-center">
@@ -143,8 +143,8 @@ const dividerClass = 'w-px h-4 mx-1 shrink-0 bg-gray-200 dark:bg-[#3e4451]'
       </button>
       <div
         v-if="isSettingsMenuOpen"
-        class="absolute right-0 z-30 w-max py-1 rounded-lg border shadow-xl animate-pop-in text-xs bg-white dark:bg-[#282c34] border-gray-200 dark:border-[#3e4451]"
-        :class="props.isMenuBelow ? 'top-full mt-1.5' : 'bottom-full mb-1.5'"
+        class="absolute z-30 w-max py-1 rounded-lg border shadow-xl animate-pop-in text-xs bg-white dark:bg-[#282c34] border-gray-200 dark:border-[#3e4451]"
+        :class="props.isMenuBelow ? 'right-0 top-full mt-1.5' : 'left-0 bottom-full mb-1.5'"
       >
         <button
           v-for="item in settingItems"

@@ -2,7 +2,7 @@
   "name": "3d-mql",
   "displayName": "3D MQL Graph",
   "description": "ENOVIA MQL로 객체와 관계를 그래프로 탐색합니다.",
-  "version": "0.0.47",
+  "version": "0.0.48",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -173,7 +173,7 @@
       },
       {
         "command": "3d-mql.graph.relayout",
-        "key": "shift+alt+f",
+        "key": "alt+r",
         "when": "activeWebviewPanelId == '3d-mql.graph' && !3d-mql.consoleFocus"
       },
       {
@@ -237,13 +237,13 @@
         },
         "3d-mql.searchLimit": {
           "type": "integer",
-          "default": 200,
+          "default": 100,
           "minimum": 1,
           "description": "객체 검색 결과 최대 건수입니다."
         },
         "3d-mql.expandLimit": {
           "type": "integer",
-          "default": 500,
+          "default": 50,
           "minimum": 1,
           "description": "그래프를 펼칠 때 방향별로 가져오는 최대 연결 수입니다. Expand 옵션의 Limit이 0이면 이 값을 씁니다. 넘는 연결은 객체 ID로 검색해 기준 객체로 열어 보세요."
         }

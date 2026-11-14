@@ -6,6 +6,7 @@ import {
   CornerRightUp,
   Crosshair,
   Copy,
+  Check,
   Terminal,
   Play,
   TextCursorInput,
@@ -95,6 +96,7 @@ const {
   isDetailLoading,
   isDetailPanelOpen,
   onContextAction,
+  isMenuIdCopied,
   rootItem,
   relationFilterState,
   rootHistory,
@@ -295,10 +297,17 @@ const multiMenuItems = (targets) => {
   ]
 }
 
+const copyIdItem = computed(() =>
+  isMenuIdCopied.value
+    ? { action: 'copyId', label: 'Copy ID', icon: Check, color: 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/40' }
+    : { action: 'copyId', label: 'Copy ID', icon: Copy, color: copyColor },
+)
+
 const contextMenuItems = computed(() => {
   const menu = contextMenu.value
   if (!menu) return []
-  return menu.kind === 'multi' ? multiMenuItems(menu.targets) : graphMenuItems[menu.kind]
+  if (menu.kind === 'multi') return multiMenuItems(menu.targets)
+  return menu.kind === 'node' ? [copyIdItem.value, ...graphMenuItems.node] : graphMenuItems[menu.kind]
 })
 </script>
 

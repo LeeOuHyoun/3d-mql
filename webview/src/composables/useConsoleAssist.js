@@ -25,9 +25,9 @@ const MIRROR_STYLES = [
 ]
 
 const schemaNames = new Map()
-const { writeCount } = useMqlConsole()
+const { schemaWriteCount } = useMqlConsole()
 
-watch(writeCount, () => schemaNames.clear())
+watch(schemaWriteCount, () => schemaNames.clear())
 
 const namesOf = (kind) => {
   if (!schemaNames.has(kind)) {
