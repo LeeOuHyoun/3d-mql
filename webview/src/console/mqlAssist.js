@@ -130,7 +130,7 @@ const EXPAND_SUFFIXES = ['recurse to all select bus id current']
 
 const phraseKey = (raw) => raw.replace(/\s+/g, ' ').trim().toLowerCase()
 
-const quoteName = (name) => (name.includes('"') ? `'${name}'` : `"${name}"`)
+export const quoteName = (name) => (name.includes('"') ? `'${name}'` : `"${name}"`)
 
 const isLineStarter = (line) => {
   const [first, second] = line.trim().toLowerCase().split(/\s+/)

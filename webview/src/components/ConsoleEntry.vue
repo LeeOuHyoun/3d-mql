@@ -1,7 +1,20 @@
 <script setup>
-import { Play, Copy, Check, FileText, ChevronRight, Table2, Highlighter, CirclePlus, CircleAlert } from '@lucide/vue'
+import {
+  Play,
+  Copy,
+  Check,
+  FileText,
+  ChevronRight,
+  Table2,
+  Highlighter,
+  CirclePlus,
+  CircleAlert,
+  Square,
+  TextCursorInput,
+} from '@lucide/vue'
 import { uniq } from 'lodash-es'
 import { useMqlConsole } from '../composables/useMqlConsole.js'
+import { useCopyFeedback } from '../composables/useCopyFeedback.js'
 import { gridOf, gridTsv, OBJECT_ID_PATTERN } from '../console/mqlResult.js'
 import { highlightParts } from '../console/mqlHighlight.js'
 import ConsoleText from './ConsoleText.vue'
@@ -16,7 +29,14 @@ const objectIds = computed(() => uniq(props.entry.output.match(OBJECT_ID_PATTERN
 
 const commandParts = computed(() => highlightParts(props.entry.command))
 
-const { run, openInEditor } = useMqlConsole()
+const { run, stop, insertInput, openInEditor } = useMqlConsole()
+
+const { copy: copyHint, isCopied: isHintCopied } = useCopyFeedback()
+
+const runHint = (hint) => {
+  props.entry.hints = props.entry.hints.filter((item) => item !== hint)
+  run(hint.text, { fill: false })
+}
 
 const grid = computed(() =>
   props.entry.output && !props.entry.isRunning && !props.entry.error ? gridOf(props.entry.command, props.entry.output) : null,
@@ -24,6 +44,7 @@ const grid = computed(() =>
 const isGridShown = computed(() => props.entry.isGrid && !!grid.value)
 const resultText = computed(() => props.entry.output || props.entry.error)
 const lineCount = computed(() => resultText.value.split('\n').length)
+const isFoldShown = computed(() => props.entry.isFolded && !(props.findRegex && resultText.value.search(props.findRegex) >= 0))
 
 const { copy, copied } = useClipboard({ legacy: true })
 
@@ -53,12 +74,21 @@ const cellClass = 'px-2 py-0.5 border border-gray-200 dark:border-[#3e4451] text
       </button>
       <span class="text-[#61afef] shrink-0">MQL&gt;</span>
       <span class="flex-1 min-w-0 whitespace-pre-wrap break-all text-gray-800 dark:text-[#abb2bf]"
-        ><span v-for="(part, index) in commandParts" :key="index" :class="part.cls">{{ part.text }}</span></span
+        ><ConsoleText
+          v-if="props.findRegex"
+          :text="props.entry.command"
+          :findRegex="props.findRegex"
+          @objectId="forwardObjectId" /><template v-else
+          ><span v-for="(part, index) in commandParts" :key="index" :class="part.cls">{{ part.text }}</span></template
+        ></span
       >
       <span v-if="props.entry.error" class="shrink-0 flex text-red-500" title="실패">
         <CircleAlert :size="12" />
       </span>
       <span class="shrink-0 text-gray-400">{{ props.entry.elapsed ? `${props.entry.elapsed}ms` : '' }}</span>
+      <button v-if="props.entry.isRunning" :class="iconBtnClass" class="text-red-500!" title="실행 중단" @click="stop">
+        <Square :size="12" />
+      </button>
       <button
         v-if="grid"
         :class="[iconBtnClass, isGridShown && 'text-[#61afef]!']"
@@ -84,7 +114,7 @@ const cellClass = 'px-2 py-0.5 border border-gray-200 dark:border-[#3e4451] text
             <CirclePlus :size="12" />
           </button>
         </template>
-        <button :class="iconBtnClass" title="다시 실행" @click="run(props.entry.command)">
+        <button v-if="!props.entry.isSecret" :class="iconBtnClass" title="다시 실행" @click="run(props.entry.command)">
           <Play :size="12" />
         </button>
         <button :class="iconBtnClass" :title="isGridShown ? '표 복사 (TSV)' : '결과 복사'" @click="copyResult">
@@ -96,7 +126,7 @@ const cellClass = 'px-2 py-0.5 border border-gray-200 dark:border-[#3e4451] text
         </button>
       </span>
     </div>
-    <div v-if="props.entry.isFolded" class="ml-4 mt-0.5 text-gray-400 italic font-sans">
+    <div v-if="isFoldShown" class="ml-4 mt-0.5 text-gray-400 italic font-sans">
       {{ props.entry.elapsed ? `결과 ${lineCount}줄 접힘` : '실행 중...' }}
     </div>
     <pre v-else-if="props.entry.error && !props.entry.output" class="m-0 mt-0.5 whitespace-pre-wrap break-all text-red-600 dark:text-red-400"><ConsoleText
@@ -138,8 +168,33 @@ const cellClass = 'px-2 py-0.5 border border-gray-200 dark:border-[#3e4451] text
       @objectId="forwardObjectId"
     /><template v-else>{{ props.entry.elapsed ? '(결과 없음)' : '실행 중...' }}</template></pre>
     <pre
-      v-if="!props.entry.isFolded && props.entry.output && props.entry.error && !props.entry.isFailed"
+      v-if="!isFoldShown && props.entry.output && props.entry.error && !props.entry.isFailed"
       class="m-0 mt-0.5 whitespace-pre-wrap break-all text-red-600 dark:text-red-400"
     >{{ props.entry.error }}</pre>
+    <template v-if="!isFoldShown">
+      <div
+        v-for="(hint, index) in props.entry.hints"
+        :key="index"
+        class="mt-1 ml-4 px-2 py-1 rounded border border-dashed border-gray-300 dark:border-[#3e4451] font-sans text-gray-500 dark:text-[#7f848e]"
+      >
+        <div v-if="hint.text" class="flex items-start gap-1">
+          <span class="shrink-0">{{ hint.label }}:</span>
+          <span class="flex-1 min-w-0 font-mono whitespace-pre-wrap break-all text-gray-700 dark:text-[#abb2bf]">{{
+            hint.text
+          }}</span>
+          <button v-if="hint.isRunnable" :class="iconBtnClass" :title="`${hint.label} 실행`" @click="runHint(hint)">
+            <Play :size="12" />
+          </button>
+          <button :class="iconBtnClass" title="입력창에 넣기" @click="insertInput(hint.text)">
+            <TextCursorInput :size="12" />
+          </button>
+          <button :class="iconBtnClass" title="복사" @click="copyHint(hint.text, index)">
+            <Check v-if="isHintCopied(index)" :size="12" class="text-green-500" />
+            <Copy v-else :size="12" />
+          </button>
+        </div>
+        <div v-if="hint.note">{{ hint.note }}</div>
+      </div>
+    </template>
   </div>
 </template>

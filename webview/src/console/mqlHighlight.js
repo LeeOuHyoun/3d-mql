@@ -4,7 +4,7 @@ import { PLACEHOLDER, TEMPLATE_HOLES } from './mqlAssist.js'
 export const HIGHLIGHT_MAX_CHARS = 20000
 
 const TOKEN =
-  /(["'])(?:\\[\s\S]|(?!\1)[^\\])*\1?|<[A-Za-z_][\w|,.]*>|\d+(?:\.\d+){3}|[A-Za-z_][\w.-]*(?:\[[^\]\n]*\][\w.-]*)*|\d+(?:\.\d+)?|[;|*]/g
+  /(?<=^|[\s;])#[^\r\n]*|(["'])(?:\\[\s\S]|(?!\1)[^\\])*\1?|<[A-Za-z_][\w|,.]*>|\d+(?:\.\d+){3}|[A-Za-z_][\w.-]*(?:\[[^\]\n]*\][\w.-]*)*|\d+(?:\.\d+)?|[;|*]/g
 
 const KEYWORDS = new Set([
   ...QUERY_CLAUSES,
@@ -38,6 +38,7 @@ const TONES = {
   sel: 'text-cyan-700 dark:text-[#56b6c2]',
   hole: 'text-yellow-600 dark:text-[#e5c07b] underline decoration-dotted',
   punct: 'text-gray-400 dark:text-[#5c6370]',
+  cmt: 'text-gray-500 dark:text-[#5c6370]',
 }
 
 const isLineStart = (text, index) => text.slice(text.lastIndexOf('\n', index - 1) + 1, index).trim() === ''
@@ -71,6 +72,10 @@ const toneSpans = (text) => {
     const value = match[0]
     const start = match.index
     const end = start + value.length
+    if (value[0] === '#') {
+      spans.push({ start, end, tone: 'cmt' })
+      continue
+    }
     if (value[0] === '"' || value[0] === "'") {
       spans.push(...quotedParts(text, start, end))
       statementStart = false

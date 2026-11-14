@@ -31,6 +31,7 @@ const fixedGroups = [
       { keys: [['Ctrl', 'F']], description: '결과에서 찾기' },
       { keys: [['Enter'], ['Shift', 'Enter']], description: '다음 / 이전 찾기 결과로 이동' },
       { keys: [['Click']], description: '결과의 Object ID 메뉴 (그래프에서 열기 · print · expand)' },
+      { keys: [['Double Click']], description: '입력창 위 막대: 입력창 높이를 내용에 맞춰 자동 조절' },
     ],
   },
   {

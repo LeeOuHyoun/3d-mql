@@ -724,6 +724,11 @@ export async function relationshipAttributes(client: MqlClient, name: string) {
   return attributeInfo(client, selectValues(text, 'attribute'));
 }
 
+export async function printHelp(client: MqlClient, topic: string) {
+  if (!/^[a-z]*$/.test(topic)) throw new Error(`help 대상으로 쓸 수 없는 이름입니다: ${topic}`);
+  return client.run(topic ? `help ${topic}` : 'help');
+}
+
 export async function listNames(client: MqlClient, kind: string) {
   if (!listKinds.includes(kind)) throw new Error(`목록을 조회할 수 없는 항목입니다: ${kind}`);
   const text = await client.run(`list ${kind}`);
@@ -823,6 +828,8 @@ export function forgetSymbolics(client: MqlClient) {
   symbolicCache.delete(client);
   singleSymbolicCache.delete(client);
 }
+
+export const symbolicMap = (client: MqlClient) => symbolicNames(client).then(({ byName }) => byName);
 
 const bySymbolicOf = (client: MqlClient) =>
   symbolicNames(client).then(

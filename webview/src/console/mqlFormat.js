@@ -172,6 +172,13 @@ const tokenize = (text) => {
       i += 1
       continue
     }
+    if (ch === '#') {
+      let end = i
+      while (end < text.length && text[end] !== '\r' && text[end] !== '\n') end += 1
+      tokens.push({ type: 'comment', value: text.slice(i, end), start: i, end })
+      i = end
+      continue
+    }
     let j = i
     let quote = ''
     let depth = 0
@@ -216,28 +223,43 @@ const nextWords = (tokens, from) => {
   return words
 }
 
+const codeWords = (words) => words.filter((word) => word.type !== 'comment')
+
 const splitStatements = (text) => {
   const tokens = tokenize(text)
   const statements = []
   let current = []
   let afterNewline = false
-  const flush = (end = current.at(-1)?.end) => {
-    if (current.length) statements.push({ words: current, start: current[0].start, end })
+  let trailing = null
+  const flush = (semiEnd) => {
+    if (current.length) {
+      const end = semiEnd ?? current.at(-1).end
+      const codeEnd = semiEnd ?? codeWords(current).at(-1)?.end ?? end
+      statements.push({ words: current, start: current[0].start, end, codeEnd })
+    }
     current = []
     afterNewline = false
   }
   tokens.forEach((token, index) => {
     if (token.type === 'semi') {
-      if (current.length) flush(token.end)
+      if (!current.length) return
+      flush(token.end)
+      trailing = statements.at(-1)
       return
     }
     if (token.type === 'newline') {
+      trailing = null
       if (current.length) afterNewline = true
+      return
+    }
+    if (token.type === 'comment' && !current.length && trailing) {
+      trailing.words.push(token)
+      trailing.end = token.end
       return
     }
     if (afterNewline) {
       const words = nextWords(tokens, index)
-      if (isStarterAt(words) && !continuesDdl(current, lower(words[0]))) flush()
+      if (isStarterAt(words) && !continuesDdl(codeWords(current), lower(words[0]))) flush()
       else afterNewline = false
     }
     current.push(token)
@@ -274,14 +296,30 @@ const isClauseBreak = (words, index, headerEnd) => {
   return DDL_WORDS.has(word)
 }
 
-const formatStatement = (words) => {
+const commentsByWord = (words) => {
+  const notes = new Map()
+  let at = -1
+  words.forEach((word) => {
+    if (word.type !== 'comment') at += 1
+    else notes.set(at, [...(notes.get(at) ?? []), word.value])
+  })
+  return notes
+}
+
+const formatStatement = (allWords) => {
+  const words = codeWords(allWords)
+  const notes = commentsByWord(allWords)
+  const leading = notes.get(-1) ?? []
+  if (!words.length) return leading.join('\n')
   const headerEnd = headerLength(words)
   const isDdl = isSchemaDdl(words)
   const lines = []
+  const lineNotes = []
   let line = []
   let indent = ''
   let section = ''
   let inSelect = false
+  let isBreakNext = false
   const indentFor = (word) => {
     if (!isDdl) return '  '
     if (SECTION_WORDS.has(word)) {
@@ -300,17 +338,29 @@ const formatStatement = (words) => {
   const pushLine = () => lines.push(lines.length ? indent + line.join(' ') : line.join(' '))
   words.forEach((token, index) => {
     const word = lower(token)
-    if (isClauseBreak(words, index, headerEnd) && !(inSelect && !SELECT_ENDS.has(word)) && line.length) {
+    const isBreak = isClauseBreak(words, index, headerEnd) && !(inSelect && !SELECT_ENDS.has(word))
+    if ((isBreak || isBreakNext) && line.length) {
       pushLine()
       line = []
-      indent = indentFor(word)
-      inSelect = word === 'select'
+      if (isBreak) {
+        indent = indentFor(word)
+        inSelect = word === 'select'
+      } else indent ||= '  '
     } else if (index >= headerEnd && word === 'select') inSelect = true
+    isBreakNext = false
     line.push(token.value)
+    if (notes.has(index)) {
+      lineNotes[lines.length] = notes.get(index)
+      isBreakNext = true
+    }
   })
   if (line.length) pushLine()
-  const joined = lines.join('\n')
-  return joined.endsWith(';') ? joined : `${joined};`
+  if (!lines.at(-1).endsWith(';')) lines[lines.length - 1] += ';'
+  const body = lines.flatMap((text, index) => {
+    const [first, ...rest] = lineNotes[index] ?? []
+    return [first ? `${text} ${first}` : text, ...rest.map((note) => `${index ? indent : ''}${note}`)]
+  })
+  return [...leading, ...body].join('\n')
 }
 
 export const formatMqlText = (text) =>
@@ -329,6 +379,62 @@ export const statementSpanAt = (text, cursor) => {
 }
 
 export const flattenStatement = (words) => {
-  const line = words.map((word) => word.value).join(' ')
+  const line = codeWords(words)
+    .map((word) => word.value)
+    .join(' ')
+  if (!line) return ''
   return line.endsWith(';') ? line : `${line};`
+}
+
+export const joinLinesAt = (text, selStart, selEnd) => {
+  const lines = text.split('\n')
+  const lineStarts = []
+  let offset = 0
+  for (const line of lines) {
+    lineStarts.push(offset)
+    offset += line.length + 1
+  }
+  const posAt = (index) => {
+    let line = 0
+    for (let i = 1; i < lineStarts.length && lineStarts[i] <= index; i += 1) line = i
+    return { line: line + 1, column: index - lineStarts[line] + 1 }
+  }
+  const startPos = posAt(selStart)
+  const endPos = posAt(selEnd)
+  const isEmpty = selStart === selEnd
+  const isOneLine = isEmpty || startPos.line === endPos.line
+  const startLine = startPos.line
+  const endLine = isOneLine ? Math.min(startLine + 1, lines.length) : endPos.line
+  const selectionEndOffset = lines[endPos.line - 1].length - endPos.column
+  let joined = lines[startLine - 1]
+  let columnDelta = 0
+  for (let i = startLine + 1; i <= endLine; i += 1) {
+    const lineText = lines[i - 1]
+    const contentAt = lineText.search(/\S/)
+    if (contentAt < 0) {
+      columnDelta = 0
+      continue
+    }
+    let hasSpace = joined !== ''
+    if (hasSpace && /[ \t]$/.test(joined)) {
+      hasSpace = false
+      joined = joined.replace(/[\s﻿\xA0]+$/g, ' ')
+    }
+    const content = lineText.substring(contentAt)
+    joined += (hasSpace ? ' ' : '') + content
+    columnDelta = content.length + (hasSpace ? 1 : 0)
+  }
+  const from = lineStarts[startLine - 1]
+  const to = lineStarts[endLine - 1] + lines[endLine - 1].length
+  if (from === to) return null
+  const next = text.slice(0, from) + joined + text.slice(to)
+  const caretAt = isEmpty ? from + joined.length - columnDelta : from + startPos.column - 1
+  const endAt = isEmpty
+    ? caretAt
+    : startPos.line === endPos.line
+      ? from + endPos.column - 1
+      : from + joined.length - selectionEndOffset - 1
+  const [start, end] = [caretAt, endAt].map((index) => Math.min(Math.max(0, index), next.length)).sort((a, b) => a - b)
+  if (next === text && start === selStart && end === selEnd) return null
+  return { text: next, start, end, from, to, insert: joined }
 }

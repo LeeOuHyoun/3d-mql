@@ -1,5 +1,5 @@
 import { onMessage, post, request } from '@/api.js'
-import { flattenStatement, formatMqlText, statementSpanAt } from '@/console/mqlFormat.js'
+import { flattenStatement, formatMqlText, joinLinesAt, statementSpanAt } from '@/console/mqlFormat.js'
 import {
   insertTextOf,
   isTemplate,
@@ -87,6 +87,22 @@ const replaceRange = (el, from, to, text) => {
   el.dispatchEvent(new Event('input', { bubbles: true }))
 }
 
+const lineAt = (value, caret) => {
+  const lineStart = value.lastIndexOf('\n', caret - 1) + 1
+  const found = value.indexOf('\n', caret)
+  return { lineStart, lineEnd: found < 0 ? value.length : found }
+}
+
+const clauseAt = (value, caret) => {
+  const { lineStart, lineEnd } = lineAt(value, caret)
+  const line = value.slice(lineStart, lineEnd)
+  const trimmedRight = line.replace(/\s+$/, '')
+  if (!trimmedRight.endsWith(';')) return caret
+  const semi = lineStart + trimmedRight.length - 1
+  if (caret >= semi && caret <= lineEnd) return semi
+  return /^\s*$/.test(line.slice(caret - lineStart, trimmedRight.length - 1)) ? semi : caret
+}
+
 export function useConsoleAssist(textarea) {
   const items = ref([])
   const index = ref(0)
@@ -150,24 +166,73 @@ export function useConsoleAssist(textarea) {
     if (!isWhole) el.setSelectionRange(start, start + formatted.length)
   }
 
+  const joinLines = () => {
+    const el = textarea.value
+    const joined = el && joinLinesAt(el.value, el.selectionStart, el.selectionEnd)
+    if (!joined) return
+    close()
+    if (joined.text !== el.value) replaceRange(el, joined.from, joined.to, joined.insert)
+    el.setSelectionRange(joined.start, joined.end)
+  }
+
+  const insertText = (text) => {
+    const el = textarea.value
+    if (!el || !text) return
+    close()
+    replaceRange(el, el.selectionStart, el.selectionEnd, text)
+  }
+
+  const insertStatement = (text) => {
+    const el = textarea.value
+    if (!el || !text) return
+    close()
+    if (!el.value.trim()) {
+      replaceRange(el, 0, el.value.length, text)
+      return
+    }
+    const at = caretOffset(el)
+    const { lineStart, lineEnd } = lineAt(el.value, at)
+    const prefix = el.value.slice(lineStart, at).trim() ? '\n' : ''
+    const suffix = el.value.slice(at, lineEnd).trim() ? '\n' : ''
+    replaceRange(el, at, at, `${prefix}${text}${suffix}`)
+    const next = at + prefix.length + text.length
+    el.setSelectionRange(next, next)
+  }
+
+  const appendClause = (text, pick = '') => {
+    const el = textarea.value
+    if (!el) return
+    close()
+    const at = clauseAt(el.value, caretOffset(el))
+    const gap = at > 0 && !/\s/.test(el.value[at - 1]) ? ' ' : ''
+    replaceRange(el, at, at, `${gap}${text}`)
+    const mark = pick ? text.indexOf(pick) : -1
+    const start = at + gap.length + (mark < 0 ? text.length : mark)
+    el.setSelectionRange(start, mark < 0 ? start : start + pick.length)
+  }
+
   const takeStatement = () => {
     const el = textarea.value
     const statement = el && statementSpanAt(el.value, caretOffset(el))
-    if (!statement) return ''
-    const hole = placeholderSpans(el.value).find((span) => span.start >= statement.start && span.end <= statement.end)
+    const text = statement ? flattenStatement(statement.words) : ''
+    if (!text) return ''
+    const code = statement.words.filter((word) => word.type !== 'comment')
+    const hole = placeholderSpans(el.value).find((span) =>
+      code.some((word) => span.start >= word.start && span.end <= word.end),
+    )
     if (hole) {
       el.focus()
       el.setSelectionRange(hole.start, hole.end)
       post({ type: 'notify', text: '채우지 않은 <…> 칸이 있어 실행하지 않았습니다.', warning: true })
       return ''
     }
-    if (el.value[statement.end - 1] !== ';') {
+    if (el.value[statement.codeEnd - 1] !== ';') {
       const { selectionStart, selectionEnd } = el
-      const shift = (pos) => (pos >= statement.end ? pos + 1 : pos)
-      replaceRange(el, statement.end, statement.end, ';')
+      const shift = (pos) => (pos >= statement.codeEnd ? pos + 1 : pos)
+      replaceRange(el, statement.codeEnd, statement.codeEnd, ';')
       el.setSelectionRange(shift(selectionStart), shift(selectionEnd))
     }
-    return flattenStatement(statement.words)
+    return text
   }
 
   const navigate = (e) => {
@@ -208,7 +273,7 @@ export function useConsoleAssist(textarea) {
     setFocus(false)
   }
 
-  const shortcuts = { suggest: () => open(true), format }
+  const shortcuts = { suggest: () => open(true), format, joinLines }
 
   tryOnScopeDispose(
     onMessage((message) => {
@@ -217,5 +282,19 @@ export function useConsoleAssist(textarea) {
   )
   tryOnScopeDispose(() => setFocus(false))
 
-  return { items, index, caret, close, accept, takeStatement, onKeydown, onInput, onFocus, onBlur }
+  return {
+    items,
+    index,
+    caret,
+    close,
+    accept,
+    takeStatement,
+    insertText,
+    insertStatement,
+    appendClause,
+    onKeydown,
+    onInput,
+    onFocus,
+    onBlur,
+  }
 }

@@ -95,10 +95,10 @@ export function useGraphExplorer() {
     const vault = /\bvault\s+(.+?)(?=\s+(?:user|person|role)\b|$)/i.exec(text)?.[1] ?? ''
     return { user, vault, label: user ? [user, vault].filter(Boolean).join(' · ') : text }
   })
-  const reconnect = () => {
+  const reconnect = async () => {
+    if (!(await request('reconnect').catch(() => false))) return
     detailCache.clear()
     clearRequestCache()
-    post({ type: 'reconnect' })
   }
 
   tryOnScopeDispose(
@@ -800,10 +800,14 @@ export function useGraphExplorer() {
 
   const runNow = guarded(async (params) => {
     if (basket.isLocked('바구니를 실행하는 동안에는 바로 실행할 수 없습니다.')) return
-    const { forward } = await request('change', params)
+    const { forward, inverse, note } = await request('change', params)
     const entry = await runInConsole(forward, { fill: false })
     if (!entry) return
     if (entry.error) throw new Error(entry.error)
+    if (inverse || note) {
+      const label = params.kind === 'delete' ? '다시 만드는 문장' : '되돌리는 문장'
+      entry.hints = [...(entry.hints ?? []), { label, text: inverse, note }]
+    }
     const createdId = params.kind === 'create' ? entry.output.match(OBJECT_ID_PATTERN)?.at(-1) : undefined
     post({ type: 'notify', text: `실행했습니다: ${forward}` })
     await onApplied(createdId ? [createdId] : [], params.kind === 'connect' ? [params] : [])

@@ -15,7 +15,8 @@ export const isPending = (item) => item.status !== 'done'
 
 export function useChangeBasket(connection, onApplied, scriptInfo) {
   const { run, openInEditor } = useMqlConsole()
-  const runChange = (command) => run(command, { confirm: false, fill: false })
+  const runChange = async (command) =>
+    (await run(command, { confirm: false, fill: false })) ?? { error: '같은 명령이 이미 실행 중입니다.', output: '' }
   const changes = ref([])
   const history = ref([])
   const isBasketOpen = ref(false)

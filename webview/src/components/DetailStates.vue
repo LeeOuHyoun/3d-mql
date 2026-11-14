@@ -10,6 +10,20 @@ const emit = defineEmits(['change'])
 
 const signActions = ['approve', 'reject', 'ignore', 'unsign']
 
+const currentIndex = computed(() => props.extra.states.findIndex((state) => state.name === props.extra.current))
+const nextState = computed(() => (currentIndex.value < 0 ? '' : (props.extra.states[currentIndex.value + 1]?.name ?? '')))
+const prevState = computed(() => (currentIndex.value > 0 ? props.extra.states[currentIndex.value - 1].name : ''))
+
+const promoteTitle = computed(() => {
+  if (currentIndex.value < 0) return '바로 실행합니다.'
+  return nextState.value ? `promote bus → ${nextState.value} · 바로 실행합니다.` : '마지막 state라 promote 할 수 없습니다.'
+})
+
+const demoteTitle = computed(() => {
+  if (currentIndex.value < 0) return '바로 실행합니다. 실행 전에 확인 창이 뜹니다.'
+  return prevState.value ? `demote bus → ${prevState.value} · 실행 전에 확인 창이 뜹니다.` : '첫 state라 demote 할 수 없습니다.'
+})
+
 const user = ref('')
 const userAccess = shallowRef(null)
 const isChecking = ref(false)
@@ -37,7 +51,7 @@ watch(
 const sectionClass =
   'px-4 py-1.5 text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-[#5c6370] bg-gray-100 dark:bg-[#2c313a]'
 const actionBtnClass =
-  'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-semibold rounded-md border border-gray-200 dark:border-[#3e4451] bg-transparent text-gray-700 dark:text-[#abb2bf] cursor-pointer hover:border-[#61afef] hover:text-[#61afef]'
+  'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 text-xs font-semibold rounded-md border border-gray-200 dark:border-[#3e4451] bg-transparent text-gray-700 dark:text-[#abb2bf] cursor-pointer hover:border-[#61afef] hover:text-[#61afef] disabled:opacity-40 disabled:cursor-default disabled:hover:border-gray-200 disabled:hover:text-gray-700 dark:disabled:hover:border-[#3e4451] dark:disabled:hover:text-[#abb2bf]'
 const linkBtnClass = 'px-1 border-none bg-transparent text-[11px] text-[#61afef] hover:underline cursor-pointer'
 const chipClass = 'px-1.5 rounded bg-gray-100 dark:bg-white/10 text-[11px] text-gray-600 dark:text-[#abb2bf]'
 </script>
@@ -45,13 +59,19 @@ const chipClass = 'px-1.5 rounded bg-gray-100 dark:bg-white/10 text-[11px] text-
 <template>
   <div>
     <div class="px-4 py-2 flex gap-2 border-b border-gray-200 dark:border-[#3e4451]">
-      <button :class="actionBtnClass" title="바로 실행합니다." @click="emit('change', { kind: 'promote' })">
+      <button
+        :class="actionBtnClass"
+        :title="promoteTitle"
+        :disabled="currentIndex >= 0 && !nextState"
+        @click="emit('change', { kind: 'promote' })"
+      >
         <CircleArrowUp :size="14" />
         Promote
       </button>
       <button
         :class="actionBtnClass"
-        title="바로 실행합니다. 실행 전에 확인 창이 뜹니다."
+        :title="demoteTitle"
+        :disabled="currentIndex >= 0 && !prevState"
         @click="emit('change', { kind: 'demote' })"
       >
         <CircleArrowDown :size="14" />

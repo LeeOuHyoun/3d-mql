@@ -140,7 +140,9 @@ const {
   resetMinimap,
 } = useMinimapLayout(graphPane)
 const isRelationPanelOpen = useStorage('3d-mql-relation-panel-open', false)
-const { isOpen: isConsoleOpen } = useMqlConsole()
+const { isOpen: isConsoleOpen, isTxActive, isRunning: isConsoleRunning, run: runConsole } = useMqlConsole()
+const isConsoleTx = computed(() => isTxActive.value && !transaction.value)
+const endConsoleTransaction = (action) => runConsole(`${action} transaction;`, { fill: false })
 
 const fullscreenPane = ref('')
 const paneFullscreen = (pane) =>
@@ -498,9 +500,13 @@ const contextMenuItems = computed(() => {
       :connection="connection"
       :context="context"
       :changeCount="changes.length"
+      :isTxActive="isConsoleTx"
+      :isTxBusy="isConsoleRunning"
       @basket="isBasketOpen = true"
       @create="openCreate()"
       @reconnect="reconnect"
+      @commit="endConsoleTransaction('commit')"
+      @abort="endConsoleTransaction('abort')"
     >
       <template #start>
         <Teleport defer :to="fullscreenTools" :disabled="!isGraphFullscreen">
@@ -565,6 +571,7 @@ const contextMenuItems = computed(() => {
         :is-connecting="connection.state === 'connecting'"
         :isBusy="isBasketBusy"
         @submit="submitCreate"
+        @created="addObjects"
         @close="createDialog = null"
       />
     </Transition>

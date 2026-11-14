@@ -2,7 +2,7 @@
   "name": "3d-mql",
   "displayName": "3D MQL Graph",
   "description": "ENOVIA MQL로 객체와 관계를 그래프로 탐색합니다.",
-  "version": "0.0.50",
+  "version": "0.0.51",
   "publisher": "local",
   "private": true,
   "license": "MIT",
@@ -80,6 +80,10 @@
         "title": "3D MQL: MQL 콘솔 입력 포매팅"
       },
       {
+        "command": "3d-mql.graph.joinLines",
+        "title": "3D MQL: MQL 콘솔 줄 합치기"
+      },
+      {
         "command": "3d-mql.graph.copy",
         "title": "복사"
       }
@@ -151,6 +155,10 @@
         },
         {
           "command": "3d-mql.graph.format",
+          "when": "activeWebviewPanelId == '3d-mql.graph'"
+        },
+        {
+          "command": "3d-mql.graph.joinLines",
           "when": "activeWebviewPanelId == '3d-mql.graph'"
         }
       ]
@@ -225,6 +233,11 @@
         "command": "3d-mql.graph.format",
         "key": "ctrl+shift+f",
         "when": "activeWebviewPanelId == '3d-mql.graph' && 3d-mql.consoleFocus"
+      },
+      {
+        "command": "3d-mql.graph.joinLines",
+        "key": "ctrl+j",
+        "when": "activeWebviewPanelId == '3d-mql.graph' && 3d-mql.consoleFocus"
       }
     ],
     "configuration": {
@@ -246,6 +259,12 @@
           "default": 50,
           "minimum": 1,
           "description": "그래프를 펼칠 때 방향별로 가져오는 최대 연결 수입니다. Expand 옵션의 Limit이 0이면 이 값을 씁니다. 넘는 연결은 객체 ID로 검색해 기준 객체로 열어 보세요."
+        },
+        "3d-mql.responseTimeout": {
+          "type": "integer",
+          "default": 60,
+          "minimum": 0,
+          "description": "그래프 조회 등 확장이 보내는 MQL 요청을 기다리는 시간(초)입니다. 이 시간 동안 출력이 없으면 세션을 다시 연결하고, 트랜잭션 중이면 먼저 묻습니다. 0이면 제한하지 않습니다. MQL 콘솔에서 실행한 명령에는 적용하지 않으며, 콘솔 명령은 실행 중단(■)으로 끊습니다."
         }
       }
     }

@@ -19,6 +19,7 @@ import {
   printAccess,
   printConnection,
   printConnectionLinks,
+  printHelp,
   printObject,
   printObjectExtra,
   printRelationship,
@@ -26,6 +27,7 @@ import {
   relationshipAttributes,
   searchObjects,
   searchQueryText,
+  symbolicMap,
   transactionAfter,
   typeChain,
   typeInfo,
@@ -39,7 +41,6 @@ import {
 
 type Message =
   | { type: 'ready' }
-  | { type: 'reconnect' }
   | { type: 'setTheme'; dark: boolean }
   | { type: 'notify'; text: string; warning?: boolean }
   | { type: 'consoleFocus'; focused: boolean }
@@ -65,6 +66,11 @@ const searchKeys = ['type', 'name', 'revision'];
 const countSetting = (key: string, fallback: number) => {
   const value = Math.floor(Number(vscode.workspace.getConfiguration('3d-mql').get(key, fallback)));
   return value >= 1 ? value : fallback;
+};
+
+const responseTimeoutMs = () => {
+  const value = Math.floor(Number(vscode.workspace.getConfiguration('3d-mql').get('responseTimeout', 60)));
+  return value >= 0 ? value * 1000 : 60000;
 };
 
 export class GraphPanel {
@@ -137,13 +143,15 @@ export class GraphPanel {
     });
     this.panel.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'icon.png');
     this.client = new MqlClient(
-      () => vscode.workspace.getConfiguration('3d-mql').get<string>('contextCommand', ''),
+      () => this.contextCommand(),
       (state, message) => {
         this.status = { state, message };
-        if (state !== 'ready') this.txActive = false;
+        if (state !== 'ready') this.setTx(false);
         this.post({ type: 'status', state, message });
       },
       (text) => output.appendLine(`[${new Date().toISOString()}] [${slot}] ${maskSecret(text)}`),
+      () => this.confirmTimeoutRestart(),
+      responseTimeoutMs,
     );
     void this.client.start().catch(() => undefined);
     this.panel.webview.html = this.html(root);
@@ -166,12 +174,10 @@ export class GraphPanel {
   private onMessage(message: Message) {
     if (message.type === 'ready') {
       this.isReady = true;
-      this.post({ type: 'init', dark: this.isDark(), ...this.status });
+      this.post({ type: 'init', dark: this.isDark(), ...this.status, tx: this.txActive });
       void this.client.start().catch(() => undefined);
       if (this.pendingMessage) this.post(this.pendingMessage);
       this.pendingMessage = undefined;
-    } else if (message.type === 'reconnect') {
-      void this.client.restart().catch(() => undefined);
     } else if (message.type === 'setTheme') {
       void this.context.globalState.update(themeKey, message.dark);
     } else if (message.type === 'notify') {
@@ -204,6 +210,8 @@ export class GraphPanel {
     if (method === 'connection') return printConnection(this.client, id);
     if (method === 'run') return this.run(String(params.command ?? ''), requestId);
     if (method === 'confirmRun') return this.confirmRun(String(params.command ?? ''));
+    if (method === 'reconnect') return this.reconnect();
+    if (method === 'stop') return this.stop();
     if (method === 'change') return buildChange(params as ChangeParams);
     if (method === 'access') return printAccess(this.client, id, String(params.user ?? ''));
     if (method === 'relationship') return printRelationship(this.client, id);
@@ -215,6 +223,10 @@ export class GraphPanel {
     if (method === 'list') return listNames(this.client, String(params.kind ?? ''));
     if (method === 'triggers') return printTriggers(this.client, params as TriggerSource);
     if (method === 'symbolics') return lookupSymbolics(this.client, params.names as string[]);
+    if (method === 'symbolicMap') return symbolicMap(this.client);
+    if (method === 'help') return printHelp(this.client, String(params.topic ?? ''));
+    if (method === 'contextCommand') return Promise.resolve(this.contextCommand() || 'set context user creator;');
+    if (method === 'pickJpo') return this.pickJpo();
     if (method === 'connectionLinks') return printConnectionLinks(this.client, id);
     if (method === 'openJpo') return this.openJpo(String(params.program ?? ''), String(params.method ?? ''));
     if (method === 'openDocument') return this.openDocument(String(params.content ?? ''));
@@ -233,14 +245,48 @@ export class GraphPanel {
     if (/\bproperty\b/i.test(command)) forgetSymbolics(this.client);
     if (/\battribute\b/i.test(command)) forgetAttributes(this.client);
     try {
-      const output = await this.client.run(command, (text) => this.post({ type: 'chunk', id: requestId, text }));
-      this.txActive = transactionAfter(command, this.txActive);
+      const output = await this.client.run(command, (text) => this.post({ type: 'chunk', id: requestId, text }), false);
+      this.setTx(transactionAfter(command, this.txActive));
       return { output, error: '' };
     } catch (error) {
       if (!(error instanceof MqlError)) throw error;
-      if (transactionAfter(command, this.txActive) !== this.txActive) this.txActive = false;
+      if (transactionAfter(command, this.txActive) !== this.txActive) this.setTx(false);
       return { output: error.output, error: error.message };
     }
+  }
+
+  private setTx(active: boolean) {
+    if (this.txActive === active) return;
+    this.txActive = active;
+    this.post({ type: 'tx', active });
+  }
+
+  private async confirmRollback(message: string, action: string, detail = '세션을 다시 연결하므로 진행 중인 트랜잭션은 롤백됩니다.') {
+    const picked = await vscode.window.showWarningMessage(message, { modal: true, detail }, action);
+    return picked === action;
+  }
+
+  private async confirmTimeoutRestart() {
+    if (!this.txActive || this.disposed) return true;
+    return this.confirmRollback(
+      `MQL이 ${responseTimeoutMs() / 1000}초 넘게 응답하지 않습니다. 세션을 다시 연결할까요?`,
+      '다시 연결',
+      '세션을 다시 연결하므로 진행 중인 트랜잭션은 롤백됩니다. 취소하면 응답을 계속 기다립니다.',
+    );
+  }
+
+  private async reconnect() {
+    if (this.txActive && !(await this.confirmRollback('세션을 다시 연결할까요?', '다시 연결'))) return false;
+    void this.client.restart().catch(() => undefined);
+    return true;
+  }
+
+  private async stop() {
+    if (!this.client.busy) return false;
+    if (this.txActive && !(await this.confirmRollback('실행을 중단할까요?', '중단'))) return false;
+    if (!this.client.busy) return false;
+    void this.client.restart(true).catch(() => undefined);
+    return true;
   }
 
   private async confirmRun(command: string) {
@@ -287,6 +333,22 @@ export class GraphPanel {
   private async openDocument(content: string) {
     const document = await vscode.workspace.openTextDocument({ content });
     await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+  }
+
+  private contextCommand() {
+    return vscode.workspace.getConfiguration('3d-mql').get<string>('contextCommand', '').trim();
+  }
+
+  private async pickJpo() {
+    const active = vscode.window.activeTextEditor?.document.uri;
+    const [picked] =
+      (await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        defaultUri: active?.scheme === 'file' ? active : undefined,
+        filters: { 'JPO Java Files': ['java'], 'All Files': ['*'] },
+        title: 'JPO 파일 선택',
+      })) ?? [];
+    return picked?.fsPath ?? '';
   }
 
   private async openJpo(program: string, method: string) {

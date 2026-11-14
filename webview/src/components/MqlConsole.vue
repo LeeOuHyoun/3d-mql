@@ -13,11 +13,22 @@ import {
   ArrowUp,
   ArrowDown,
   CaseSensitive,
+  WholeWord,
   Regex,
   ChevronsDown,
   CornerRightUp,
   ListOrdered,
+  BookOpen,
+  Braces,
+  KeyRound,
+  MessageSquareText,
+  Printer,
+  Network,
+  ListEnd,
+  Funnel,
+  FileCode,
 } from '@lucide/vue'
+import { clamp } from 'lodash-es'
 import { request } from '../api.js'
 import { useMqlConsole } from '../composables/useMqlConsole.js'
 import { useConsoleAssist } from '../composables/useConsoleAssist.js'
@@ -28,6 +39,7 @@ import { HIGHLIGHT_MAX_CHARS, highlightParts } from '../console/mqlHighlight.js'
 import ConsoleAssist from './ConsoleAssist.vue'
 import ConsoleEntry from './ConsoleEntry.vue'
 import ConsoleHistory from './ConsoleHistory.vue'
+import ConsoleSchema from './ConsoleSchema.vue'
 import ContextMenu from './ContextMenu.vue'
 import { graphOpenMenuItems } from './graphOpenMenuItems.js'
 
@@ -53,6 +65,9 @@ const {
   close: closeAssist,
   accept: acceptAssist,
   takeStatement,
+  insertText,
+  insertStatement,
+  appendClause,
   onKeydown: onInputKeydown,
   onInput: onInputChange,
   onFocus: onInputFocus,
@@ -79,6 +94,38 @@ const placeOverlay = () => {
 
 useResizeObserver(inputRef, placeOverlay)
 watch(inputParts, () => nextTick(placeOverlay))
+
+const INPUT_AUTO_MIN_PX = 92
+const INPUT_CHROME_PX = 19
+const rootRef = ref(null)
+const { height: rootHeight } = useElementSize(rootRef)
+const isInputAuto = useStorage('3d-mql-console-input-auto', true)
+const autoInputHeight = ref(INPUT_AUTO_MIN_PX)
+const shownInputHeight = computed(() => (isInputAuto.value ? autoInputHeight.value : inputHeight.value))
+
+const fitInput = () => {
+  const el = inputRef.value
+  if (!el || !isInputAuto.value) return
+  const saved = el.style.height
+  el.style.height = '0px'
+  const contentHeight = el.scrollHeight
+  el.style.height = saved
+  const max = Math.max(INPUT_AUTO_MIN_PX, Math.floor(rootHeight.value / 2))
+  autoInputHeight.value = clamp(contentHeight + INPUT_CHROME_PX, INPUT_AUTO_MIN_PX, max)
+}
+
+const startInputResize = (e) => {
+  inputHeight.value = shownInputHeight.value
+  isInputAuto.value = false
+  onInputResizeStart(e)
+}
+
+const resetInputAuto = () => {
+  isInputAuto.value = true
+}
+
+watch([input, rootHeight, isInputAuto], () => nextTick(fitInput))
+useResizeObserver(inputRef, () => isInputAuto.value && fitInput())
 
 const isLineNumbersShown = useStorage('3d-mql-console-line-numbers', false)
 const {
@@ -128,30 +175,93 @@ watch(
   () => isFollowing.value && scrollToEnd(),
 )
 
-const isHistoryOpen = useStorage('3d-mql-console-history-open', false)
+watch(shownInputHeight, () => isFollowing.value && scrollToEnd())
 
+const isHistoryOpen = useStorage('3d-mql-console-history-open', false)
+const isSchemaOpen = useStorage('3d-mql-console-schema-open', false)
+
+const toggleHistory = () => {
+  isHistoryOpen.value = !isHistoryOpen.value
+  if (isHistoryOpen.value) isSchemaOpen.value = false
+}
+
+const toggleSchema = () => {
+  isSchemaOpen.value = !isSchemaOpen.value
+  if (isSchemaOpen.value) isHistoryOpen.value = false
+}
+
+const SNIPPET_TEXTS = {
+  verb: 'verb on;',
+  temp: 'temp query bus * * *',
+  print: 'print bus * * *',
+  expand: 'expand bus * * * recurse to all select bus id current',
+}
+const CLAUSE_TEXTS = {
+  limit: ['limit 0 orderby id select name id description'],
+  where: [`where "attribute[???] == '???'"`, '???'],
+}
+const snippetMenuItems = [
+  { action: 'context', label: 'context (접속 명령)', icon: KeyRound },
+  { action: 'verb', label: SNIPPET_TEXTS.verb, icon: MessageSquareText },
+  { action: 'temp', label: SNIPPET_TEXTS.temp, icon: Search },
+  { action: 'print', label: SNIPPET_TEXTS.print, icon: Printer },
+  { action: 'expand', label: SNIPPET_TEXTS.expand, icon: Network },
+  { action: 'limit', label: `+ ${CLAUSE_TEXTS.limit[0]}`, icon: ListEnd },
+  { action: 'where', label: `+ ${CLAUSE_TEXTS.where[0]}`, icon: Funnel },
+  { action: 'jpo', label: 'JPO 파일 선택 후 insert prog 실행', icon: FileCode },
+]
+const snippetMenu = shallowRef(null)
+
+const openSnippetMenu = (e) => {
+  snippetMenu.value = { x: e.clientX, y: e.clientY }
+}
+
+const runJpo = async () => {
+  const path = await request('pickJpo').catch(() => '')
+  if (!path) return
+  const quoted = /\s/.test(path) && !/^".*"$/.test(path) ? `"${path}"` : path
+  run(`insert prog ${quoted};`, { fill: false })
+}
+
+const handleSnippet = async (action) => {
+  snippetMenu.value = null
+  if (action === 'jpo') runJpo()
+  else if (action === 'context') insertStatement(await request('contextCommand').catch(() => ''))
+  else if (CLAUSE_TEXTS[action]) appendClause(...CLAUSE_TEXTS[action])
+  else insertStatement(SNIPPET_TEXTS[action])
+}
+
+const FIND_DEBOUNCE_MS = 150
 const isFindOpen = ref(false)
 const findInputRef = ref(null)
 const findQuery = ref('')
-const findOptions = reactive({ matchCase: false, useRegex: false })
-const findRegex = computed(() => (isFindOpen.value ? buildFindRegex(findQuery.value, findOptions) : null))
-const isFindInvalid = computed(() => !!findQuery.value && isFindOpen.value && !findRegex.value)
+const appliedQuery = ref('')
+const findOptions = reactive({ matchCase: false, wholeWord: false, useRegex: false })
+const findRegex = computed(() => (isFindOpen.value ? buildFindRegex(appliedQuery.value, findOptions) : null))
+const isFindInvalid = computed(() => !!appliedQuery.value && isFindOpen.value && !findRegex.value)
 const findIndex = ref(-1)
 const findCount = ref(0)
 
-const focusHit = (index) => {
+watchDebounced(findQuery, (query) => (appliedQuery.value = query), { debounce: FIND_DEBOUNCE_MS })
+
+const focusHit = (index, isScrolled = true) => {
   const hits = [...(logRef.value?.querySelectorAll('[data-find-hit]') ?? [])]
   hits.forEach((el) => delete el.dataset.current)
   findCount.value = hits.length
   findIndex.value = hits.length ? (index + hits.length) % hits.length : -1
   if (!hits.length) return
   hits[findIndex.value].dataset.current = ''
-  hits[findIndex.value].scrollIntoView({ block: 'nearest' })
+  if (isScrolled) hits[findIndex.value].scrollIntoView({ block: 'nearest' })
 }
 
-const moveFind = (step) => focusHit(findIndex.value + step)
+const moveFind = (step) => {
+  if (appliedQuery.value !== findQuery.value) appliedQuery.value = findQuery.value
+  else focusHit(findIndex.value + step)
+}
 
-watch([findRegex, entries], () => nextTick(() => focusHit(0)), { deep: true })
+watch(findRegex, () => nextTick(() => focusHit(0)))
+
+watch(entries, () => nextTick(() => findRegex.value && focusHit(Math.max(findIndex.value, 0), false)), { deep: true })
 
 const openFind = () => {
   isFindOpen.value = true
@@ -220,6 +330,7 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
 
 <template>
   <div
+    ref="rootRef"
     class="bg-gray-50 dark:bg-[#21252b] flex flex-col"
     :class="
       fullscreen
@@ -251,7 +362,10 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
       >
         <ListOrdered :size="14" />
       </button>
-      <button :class="[iconBtnClass, isHistoryOpen && activeClass]" title="명령 기록" @click="isHistoryOpen = !isHistoryOpen">
+      <button :class="[iconBtnClass, isSchemaOpen && activeClass]" title="list · help 조회" @click="toggleSchema">
+        <BookOpen :size="14" />
+      </button>
+      <button :class="[iconBtnClass, isHistoryOpen && activeClass]" title="명령 기록" @click="toggleHistory">
         <History :size="14" />
       </button>
       <button :class="iconBtnClass" title="결과 지우기" @click="clear">
@@ -282,6 +396,9 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
       />
       <button :class="[iconBtnClass, findOptions.matchCase && activeClass]" title="대소문자 구분" @click="toggleFindOption('matchCase')">
         <CaseSensitive :size="14" />
+      </button>
+      <button :class="[iconBtnClass, findOptions.wholeWord && activeClass]" title="단어 단위로" @click="toggleFindOption('wholeWord')">
+        <WholeWord :size="14" />
       </button>
       <button :class="[iconBtnClass, findOptions.useRegex && activeClass]" title="정규식" @click="toggleFindOption('useRegex')">
         <Regex :size="14" />
@@ -320,14 +437,17 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         />
       </div>
       <ConsoleHistory v-if="isHistoryOpen" @close="isHistoryOpen = false" />
+      <ConsoleSchema v-if="isSchemaOpen" @close="isSchemaOpen = false" @insert="insertText" />
     </div>
     <div
       class="relative px-3 py-2 border-t border-gray-200 dark:border-[#3e4451] flex items-end gap-2 min-h-12"
-      :style="{ height: `${inputHeight}px` }"
+      :style="{ height: `${shownInputHeight}px` }"
     >
       <div
         class="absolute -top-0.5 left-0 right-0 h-1 z-10 cursor-row-resize hover:bg-[#61afef]/40"
-        @pointerdown.prevent="onInputResizeStart"
+        title="끌어서 입력창 높이 조절 · 더블클릭하면 내용에 맞춰 자동 조절"
+        @pointerdown.prevent="startInputResize"
+        @dblclick="resetInputAuto"
       ></div>
       <pre
         v-if="inputParts"
@@ -375,6 +495,13 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         @blur="onInputBlur"
       ></textarea>
       <button
+        class="h-7 px-2 flex items-center justify-center rounded-md border border-gray-200 dark:border-[#3e4451] bg-transparent text-gray-500 dark:text-[#abb2bf] hover:border-[#61afef] hover:text-[#61afef] cursor-pointer"
+        title="스니펫 · JPO insert prog"
+        @click="openSnippetMenu"
+      >
+        <Braces :size="14" />
+      </button>
+      <button
         class="h-7 px-3 flex items-center gap-1.5 rounded-md border-none bg-[#61afef] hover:bg-[#4b8bca] text-white text-xs font-semibold cursor-pointer"
         @click="runInput"
       >
@@ -382,6 +509,13 @@ const activeClass = 'text-[#61afef]! bg-[#61afef]/10'
         실행
       </button>
     </div>
+    <ContextMenu
+      v-if="snippetMenu"
+      :menu="snippetMenu"
+      :items="snippetMenuItems"
+      @action="handleSnippet"
+      @close="snippetMenu = null"
+    />
     <ContextMenu
       v-if="objectIdMenu"
       :menu="objectIdMenu"

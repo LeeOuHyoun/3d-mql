@@ -10,6 +10,7 @@ type Waiter = Pending & {
   at: number;
   lines: string[];
   streamed: number;
+  timed: boolean;
   onChunk?: Chunk;
 };
 type Signal = { resolve: () => void; reject: (error: Error) => void };
@@ -20,12 +21,10 @@ type Learning = Pending & {
   sent: number;
   candidate?: string[];
   verifyFrom: number;
-  timer: Timer;
+  timer: Timer | undefined;
 };
 
 const startTimeoutMs = 30000;
-const learnTimeoutMs = 120000;
-const responseTimeoutMs = 60000;
 const learnQuietMs = 100;
 const trailingQuietMs = 30;
 const markerCommand = 'print context;';
@@ -37,6 +36,7 @@ const quotedPattern = /"[^"]*"|'[^']*'/g;
 const contextPattern = /(?:^|[;\n])\s*(?:set|push|pop)\b|\bcont(?:ext)?\b/i;
 const contextStatementPattern = /(?:^|;)\s*(?:set|push|pop)\s+context\b/i;
 const setContextPattern = /(?:^|;)\s*(set\s+context\b[^;]*)/gi;
+const verbPattern = /^verb(?:ose)?\s+(on|off)$/i;
 const pipes = ['out', 'err'] as const;
 
 const withSemicolon = (command: string) => {
@@ -45,6 +45,12 @@ const withSemicolon = (command: string) => {
 };
 
 const changesContext = (command: string) => contextPattern.test(command.replace(quotedPattern, '""'));
+
+const verbAfter = (command: string, isOn: boolean) =>
+  command.split(';').reduce((state, statement) => {
+    const match = verbPattern.exec(statement.trim());
+    return match ? match[1].toLowerCase() === 'on' : state;
+  }, isOn);
 
 const cleanLine = (line: string) => line.replace(promptsPattern, '');
 
@@ -151,6 +157,8 @@ export class MqlClient {
   private gate: Promise<unknown> = Promise.resolve();
   private marker: string[] | undefined;
   private lastContext = '';
+  private fresh = true;
+  private verbOn = false;
   private disposed = false;
   private bootFailure: Error | undefined;
 
@@ -158,6 +166,8 @@ export class MqlClient {
     private readonly contextCommand: () => string,
     private readonly onStatus: (status: ClientStatus, message?: string) => void,
     private readonly log: (text: string) => void,
+    private readonly confirmTimeout: () => Promise<boolean>,
+    private readonly responseTimeout: () => number,
   ) {
     this.session = new MqlSession({
       output: (text, pipe) => this.onOutput(text, pipe),
@@ -187,20 +197,29 @@ export class MqlClient {
     return this.starting;
   }
 
-  restart(): Promise<void> {
+  get busy() {
+    return this.waiters.length > 0 || !!this.learning;
+  }
+
+  restart(resume = false): Promise<void> {
     this.bootFailure = undefined;
+    if (!resume) this.fresh = true;
     this.session.stop();
     this.rejectAll(new Error('MQL 세션을 다시 시작합니다.'));
     this.starting = undefined;
     return this.start();
   }
 
-  run(command: string, onChunk?: Chunk): Promise<string> {
+  run(command: string, onChunk?: Chunk, timed = true): Promise<string> {
     const text = withSemicolon(command);
     const exclusive = changesContext(text);
     const task = this.gate.then(async () => {
       await this.connected();
-      if (!exclusive) return this.enqueue(text, onChunk);
+      if (!exclusive) {
+        const output = await this.enqueue(text, timed, onChunk);
+        this.verbOn = verbAfter(text, this.verbOn);
+        return output;
+      }
       await this.drain();
       const output = await this.learn(text).catch((error: Error) => this.recover(text, error));
       const context = lastSetContext(text);
@@ -221,7 +240,8 @@ export class MqlClient {
 
   private connected() {
     return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('MQL 연결이 지연되고 있습니다.')), responseTimeoutMs);
+      const limit = this.responseTimeout();
+      const timer = limit > 0 ? setTimeout(() => reject(new Error('MQL 연결이 지연되고 있습니다.')), limit) : undefined;
       this.start()
         .then(resolve, reject)
         .finally(() => clearTimeout(timer));
@@ -229,6 +249,7 @@ export class MqlClient {
   }
 
   private async boot() {
+    const resume = !this.fresh;
     this.marker = undefined;
     this.onStatus('connecting');
     await new Promise<void>((resolve, reject) => {
@@ -246,9 +267,12 @@ export class MqlClient {
       this.session.start();
     });
     this.startWaiter = undefined;
-    const context = withSemicolon(this.contextCommand());
+    const context = (resume && this.lastContext) || withSemicolon(this.contextCommand());
     await this.learn(context);
     this.lastContext = context;
+    this.fresh = false;
+    if (!resume) this.verbOn = false;
+    if (this.verbOn) await this.enqueue('verb on;', true).catch(() => undefined);
     this.log(`marker=${JSON.stringify(this.marker)}`);
     this.notifyReady();
   }
@@ -267,13 +291,13 @@ export class MqlClient {
     this.onStatus('ready', this.marker?.join(' '));
   }
 
-  private enqueue(command: string, onChunk?: Chunk) {
+  private enqueue(command: string, timed: boolean, onChunk?: Chunk) {
     return new Promise<string>((resolve, reject) => {
       if (!this.marker) {
         reject(new Error('MQL 세션이 준비되지 않았습니다.'));
         return;
       }
-      this.waiters.push({ command, at: Date.now(), lines: [], streamed: 0, onChunk, resolve, reject });
+      this.waiters.push({ command, at: Date.now(), lines: [], streamed: 0, timed, onChunk, resolve, reject });
       if (!this.session.send(`${command}\n${markerCommand}`)) {
         this.waiters.pop();
         reject(new Error('MQL 명령 전송에 실패했습니다.'));
@@ -284,13 +308,23 @@ export class MqlClient {
   }
 
   private learnTimeout() {
-    return setTimeout(() => this.expireLearning(), learnTimeoutMs);
+    const limit = this.responseTimeout() * 2;
+    return limit > 0 ? setTimeout(() => void this.expireLearning(), limit) : undefined;
   }
 
-  private expireLearning() {
+  private async expireLearning() {
+    const learning = this.learning;
+    if (!learning) return;
     const isBooted = !!this.marker;
+    if (isBooted && !(await this.confirmTimeout().catch(() => true))) {
+      if (this.learning !== learning) return;
+      clearTimeout(learning.timer);
+      learning.timer = this.learnTimeout();
+      return;
+    }
+    if (this.learning !== learning) return;
     this.finishLearning(new Error('MQL 응답 확인 시간이 초과되었습니다.'));
-    if (isBooted) void this.restart().catch(() => undefined);
+    if (isBooted) void this.restart(true).catch(() => undefined);
   }
 
   private learn(command: string) {
@@ -310,16 +344,24 @@ export class MqlClient {
 
   private watch() {
     clearTimeout(this.watchdog);
-    this.watchdog = this.waiters.length ? setTimeout(() => this.expire(), responseTimeoutMs) : undefined;
+    const limit = this.responseTimeout();
+    this.watchdog = this.waiters[0]?.timed && limit > 0 ? setTimeout(() => void this.expire(), limit) : undefined;
   }
 
-  private expire() {
+  private async expire() {
     this.watchdog = undefined;
+    const head = this.waiters[0];
+    const isConfirmed = await this.confirmTimeout().catch(() => true);
+    if (this.waiters[0] !== head) return;
+    if (!isConfirmed) {
+      this.watch();
+      return;
+    }
     const error = new Error('MQL 응답 시간이 초과되어 MQL 세션을 다시 연결합니다.');
     this.waiters.forEach((waiter) => this.log(`timeout > ${waiter.command}`));
     this.drainers.splice(0).forEach((drainer) => drainer.reject(error));
     this.rejectAll(error);
-    void this.restart().catch(() => undefined);
+    void this.restart(true).catch(() => undefined);
   }
 
   private onOutput(text: string, pipe: Pipe) {

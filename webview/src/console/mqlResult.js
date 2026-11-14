@@ -89,10 +89,13 @@ export const gridTsv = (grid) => {
   return [grid.head, ...grid.rows].map((row) => grid.head.map((_, i) => cell(row[i] ?? '')).join('\t')).join('\n')
 }
 
-export const buildFindRegex = (query, { matchCase, useRegex }) => {
+export const buildFindRegex = (query, { matchCase, useRegex, wholeWord }) => {
   if (!query) return null
+  const source = useRegex ? query : escapeRegExp(query)
   try {
-    return new RegExp(useRegex ? query : escapeRegExp(query), matchCase ? 'g' : 'gi')
+    return wholeWord
+      ? new RegExp(`(?<![\\p{L}\\p{N}_])(?:${source})(?![\\p{L}\\p{N}_])`, matchCase ? 'gu' : 'giu')
+      : new RegExp(source, matchCase ? 'g' : 'gi')
   } catch {
     return null
   }
